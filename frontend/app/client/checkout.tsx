@@ -9,6 +9,7 @@ import { Button } from "@/src/components/Button";
 import { FinancialBreakdown, money } from "@/src/components/FinancialBreakdown";
 import { COUPONS, Order } from "@/src/data/mock";
 import { orderStore, generateCode, generateId } from "@/src/data/orderStore";
+import { paymentService } from "@/src/services/paymentService";
 
 const DELIVERY_FEE = 8;
 const PLATFORM_FEE_RATE = 0.07; // 7%
@@ -56,9 +57,7 @@ export default function Checkout() {
 
   async function pay() {
     setPaying(true);
-    // Simulated payment
-    await new Promise((r) => setTimeout(r, 1200));
-    const order: Order = {
+    const draft: Order = {
       id: generateId(),
       storeId: p.storeId as string,
       storeName: p.storeName as string,
@@ -77,8 +76,13 @@ export default function Checkout() {
       invoicePhotoSent: false,
       goodsPhotoSent: false,
       chat: [],
-      paid: true,
+      paid: false,
     };
+    // Simulated payment flow — in production, this will hit Mercado Pago via backend.
+    const intent = await paymentService.createPaymentIntent(draft);
+    await new Promise((r) => setTimeout(r, 1000));
+    await paymentService.markPaymentAsApproved(intent);
+    const order = { ...draft, paid: true };
     await orderStore.create(order);
     setPaying(false);
     router.replace(`/client/tracking/${order.id}`);

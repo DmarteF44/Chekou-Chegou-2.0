@@ -10,18 +10,20 @@ import { StatusTracker } from "@/src/components/StatusTracker";
 import { FinancialBreakdown, money } from "@/src/components/FinancialBreakdown";
 import { orderStore } from "@/src/data/orderStore";
 import { Order, ORDER_STATUSES, OrderStatus } from "@/src/data/mock";
-
-const DRIVER_ID = "driver_1";
+import { authService, User } from "@/src/services/authService";
+import { driverService, DRIVER_LEVELS, DriverLevel } from "@/src/services/driverService";
 
 export default function DriverOrder() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const [me, setMe] = useState<User | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
   const [actualValue, setActualValue] = useState("");
   const [codeInput, setCodeInput] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
+      setMe(await authService.getSession());
       const o = await orderStore.getById(id as string);
       setOrder(o ?? null);
       if (o?.actualValue !== undefined) setActualValue(String(o.actualValue));
@@ -39,11 +41,17 @@ export default function DriverOrder() {
     );
   }
 
-  const isMine = order.driverId === DRIVER_ID;
-  const canAccept = order.status === "Aguardando entregador";
+  const isMine = order.driverId === me?.id;
+  const canAccept = order.status === "Aguardando entregador" && !!me;
 
   async function acceptOrder() {
-    await orderStore.update(order!.id, { driverId: DRIVER_ID, status: "Entregador aceitou" });
+    if (!me) { Alert.alert("Atenção", "Faça login como entregador."); return; }
+    const check = driverService.canAcceptOrder(me, order!.estimatedValue);
+    if (!check.ok) {
+      Alert.alert("Limite operacional", check.reason ?? "Você não pode aceitar este pedido.");
+      return;
+    }
+    await orderStore.update(order!.id, { driverId: me.id, status: "Entregador aceitou" });
     Alert.alert("Pedido aceito!", "Siga ao estabelecimento.");
   }
 

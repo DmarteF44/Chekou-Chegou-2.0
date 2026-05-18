@@ -1,0 +1,42 @@
+{
+  "summary": "Frontend-only manual E2E testing of Chekou Ganhou Expo Web app via mobile viewport (390x844). Covered authentication for all 4 mock accounts, auth-gate routing, full client order flow (Tosta 2 → review → checkout with coupons → simulated payment → tracking with 4-digit code), pharmacy warning, history/coupons/promotions, driver flow (accept → advance status → actual value → photos → confirmation code), pending driver routing, partner signup form, signup of new user, and admin panel (tabs, drivers approval/level, establishments CRUD, products). Almost all flows work; found 2 real bugs.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "app/driver/order/[id].tsx -> confirmDelivery()",
+        "issue": "After entering CORRECT 4-digit code, the order is set to 'Entregue' in storage but the screen does NOT navigate back to /driver/home. Root cause: uses Alert.alert(...,[{onPress: () => router.replace('/driver/home')}]) — on react-native-web Alert.alert is mapped to window.alert and the per-button onPress callbacks are NOT executed. Same pattern likely affects other success Alerts (acceptOrder, saveActualValue, sendInvoice, sendGoods, partner-signup submit success).",
+        "testID": "driver-confirm-delivery",
+        "priority": "HIGH"
+      },
+      {
+        "component": "app/driver/home.tsx",
+        "issue": "Driver level and operational limit are NOT displayed anywhere on the driver home. `levelInfo` is computed (line 45) and `levelStrip`/`levelTitle`/`levelHint` styles are defined (lines 230-236) but no JSX renders them. Spec requires showing 'Nível 2 — Parceiro confiável' and 'Limite operacional R$ 150'. testID 'driver-level' / 'driver-operational-limit' missing.",
+        "testID": "driver-level-strip (missing)",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Multiple", "issues": ["Console warning: 'shadow*' style props are deprecated, use boxShadow (non-blocking, react-native-web 0.20+ deprecation)"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_1.json"],
+  "action_items": [
+    "Fix driver delivery confirmation navigation: do not rely on Alert.alert button callbacks on web. Either (a) call router.replace('/driver/home') BEFORE Alert.alert, (b) use Platform.OS check and replace immediately on web, or (c) implement a custom modal with proper button handlers. Apply the same fix to acceptOrder, saveActualValue, sendInvoice, sendGoods, partner-signup success.",
+    "Render the driver level strip on /driver/home so 'Nível 2 — Parceiro confiável' and 'Limite operacional R$ 150' are visible (use already-defined levelStrip/levelTitle/levelHint styles + DRIVER_LEVELS[level]).",
+    "Optional: add testIDs for the driver level (e.g. driver-level-name, driver-level-limit) to enable automated assertions."
+  ],
+  "critical_code_review_comments": [
+    "Alert.alert with onPress callbacks does not work reliably on react-native-web — avoid coupling navigation/state changes to alert button callbacks.",
+    "driver/home.tsx has dead style definitions (levelStrip, levelTitle, levelHint) — either render the component or remove the styles."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (no backend)", "frontend": "~90% (13/15 spec flows pass; 2 driver-specific issues)"},
+  "seed_data_creation": "No persistent seed data created. localStorage is per-browser-context; each browser_automation invocation is a fresh context so cross-session persistence cannot be verified across separate scripts. Within a single script, client→logout→driver login correctly shares the order created by the client.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All test credentials in /app/memory/test_credentials.md. Use EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env. Each playwright invocation gets fresh localStorage, so test multi-role flows in a single script (login as client → create order → logout → login as driver → finish in same script). Use page.on('dialog', lambda d: d.accept()) to dismiss web alerts. Admin tab testIDs are capitalized: admin-tab-Resumo, admin-tab-Pedidos, admin-tab-Motoristas, admin-tab-Usuários, admin-tab-Lojas, admin-tab-Produtos, admin-tab-Cupons, admin-tab-Disputas.",
+  "rca_of_issue": "Driver delivery navigation bug — Reproduction: 1) Log in cliente@chekou.com, create order, pay, copy 4-digit code from tracking page. 2) Logout, log in entregador@chekou.com. 3) Open available order, accept, click 'Avançar' until status 'A caminho do cliente', enter actual value, send photos. 4) Enter correct code in driver-code-input and click driver-confirm-delivery. Expected: redirect to /driver/home with delivery marked Entregue. Actual: stays on /driver/order/{id}. Order IS updated to status 'Entregue' in storage; only the navigation in the Alert.alert OK button callback never fires because react-native-web maps Alert.alert to window.alert and ignores per-button onPress. Mitigation: replace `Alert.alert('Entrega concluída!', '...', [{ text: 'OK', onPress: () => router.replace('/driver/home') }])` with: `router.replace('/driver/home'); Alert.alert('Entrega concluída!', 'Taxa liberada para seu saldo.');` (navigate first, then notify)."
+}

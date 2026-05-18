@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Image, KeyboardAvoidingView, Platform,
 } from "react-native";
@@ -8,20 +8,31 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
-import { ESTABLISHMENTS } from "@/src/data/mock";
+import { catalogService, Store } from "@/src/services/catalogService";
 
 export default function StoreOrder() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const store = ESTABLISHMENTS.find((e) => e.id === id) ?? ESTABLISHMENTS[0];
+  const [store, setStore] = useState<Store | null>(null);
+
+  useEffect(() => {
+    const refresh = async () => {
+      const s = await catalogService.getStore(id as string);
+      setStore(s ?? null);
+    };
+    refresh();
+    return catalogService.subscribe(refresh);
+  }, [id]);
 
   const [items, setItems] = useState("");
   const [notes, setNotes] = useState("");
   const [estimated, setEstimated] = useState("");
 
-  const valid = items.trim().length > 3 && Number(estimated.replace(",", ".")) > 0;
+  const valid = !!store && items.trim().length > 3 && Number(estimated.replace(",", ".")) > 0;
+  const isPharmacy = store?.category?.toLowerCase().includes("farmácia") || store?.id === "farmacia-parceira";
 
   function next() {
+    if (!store) return;
     router.push({
       pathname: "/client/checkout",
       params: {
@@ -32,6 +43,17 @@ export default function StoreOrder() {
         estimated,
       },
     });
+  }
+
+  if (!store) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <Header title="Criar Pedido" />
+        <View style={{ padding: spacing.md }}>
+          <Text>Estabelecimento não encontrado.</Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -49,6 +71,17 @@ export default function StoreOrder() {
               <Text style={styles.storeDesc}>{store.description}</Text>
             </View>
           </View>
+
+          {isPharmacy && (
+            <View style={styles.pharmacyWarn} testID="pharmacy-warning">
+              <Ionicons name="warning" size={18} color={colors.warning} />
+              <Text style={styles.pharmacyText}>
+                Por segurança, o Chekou Ganhou não realiza compra de medicamentos controlados ou
+                produtos que exijam retenção de receita. No MVP, permitimos apenas produtos comuns
+                e itens sem receita.
+              </Text>
+            </View>
+          )}
 
           <Section title="Sua lista de compras" hint="Escreva os produtos desejados (um por linha).">
             <TextInput
@@ -150,4 +183,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.infoSoft, padding: spacing.sm, borderRadius: radius.md,
   },
   tipText: { flex: 1, color: colors.info, fontSize: fontSize.small },
+  pharmacyWarn: {
+    flexDirection: "row", gap: 8, alignItems: "flex-start",
+    backgroundColor: colors.warningSoft, padding: spacing.sm, borderRadius: radius.md,
+  },
+  pharmacyText: { flex: 1, color: colors.warning, fontSize: fontSize.small, lineHeight: 18 },
 });

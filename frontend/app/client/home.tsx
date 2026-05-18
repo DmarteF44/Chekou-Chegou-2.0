@@ -4,22 +4,36 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
-import { ESTABLISHMENTS, PROMOTIONS, DEFAULT_CLIENT_NAME, Order } from "@/src/data/mock";
+import { PROMOTIONS, Order } from "@/src/data/mock";
 import { orderStore } from "@/src/data/orderStore";
 import { StatusPill } from "@/src/components/StatusPill";
+import { authService, User } from "@/src/services/authService";
+import { catalogService, Store } from "@/src/services/catalogService";
 
 export default function ClientHome() {
   const router = useRouter();
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [me, setMe] = useState<User | null>(null);
+  const [stores, setStores] = useState<Store[]>([]);
 
   useEffect(() => {
     const refresh = async () => {
       const all = await orderStore.getAll();
       setActiveOrders(all.filter((o) => o.status !== "Entregue"));
+      setMe(await authService.getSession());
+      setStores(await catalogService.listStores({ activeOnly: true }));
     };
     refresh();
-    return orderStore.subscribe(refresh);
+    const a = orderStore.subscribe(refresh);
+    const b = catalogService.subscribe(refresh);
+    const c = authService.subscribe(refresh);
+    return () => { a(); b(); c(); };
   }, []);
+
+  async function logout() {
+    await authService.logout();
+    router.replace("/auth/login");
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -27,18 +41,18 @@ export default function ClientHome() {
         {/* Top bar */}
         <View style={styles.topBar}>
           <View>
-            <Text style={styles.hello}>Olá, {DEFAULT_CLIENT_NAME.split(" ")[0]} 👋</Text>
+            <Text style={styles.hello}>Olá, {(me?.name ?? "Cliente").split(" ")[0]} 👋</Text>
             <View style={styles.locationRow}>
               <Ionicons name="location" size={14} color={colors.primary} />
               <Text style={styles.location}>Jataí, GO</Text>
             </View>
           </View>
           <TouchableOpacity
-            onPress={() => router.push("/")}
+            onPress={logout}
             style={styles.profileBtn}
-            testID="client-back-to-roles"
+            testID="client-logout"
           >
-            <Ionicons name="swap-horizontal" size={20} color={colors.primary} />
+            <Ionicons name="log-out-outline" size={20} color={colors.primary} />
           </TouchableOpacity>
         </View>
 
@@ -97,10 +111,28 @@ export default function ClientHome() {
           <QuickAction icon="megaphone" label="Promoções" onPress={() => router.push("/client/promotions")} testID="qa-promos" />
         </View>
 
+        {/* Become partner CTA */}
+        {me?.driverStatus === "none" && me?.role === "client" && (
+          <TouchableOpacity
+            style={styles.partnerCta}
+            onPress={() => router.push("/driver/partner-signup")}
+            testID="client-become-partner"
+          >
+            <View style={styles.partnerIcon}>
+              <Ionicons name="bicycle" size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.partnerTitle}>Quero ser parceiro</Text>
+              <Text style={styles.partnerSub}>Trabalhe como Motorista Parceiro em Jataí-GO</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+          </TouchableOpacity>
+        )}
+
         {/* Establishments */}
         <Text style={styles.sectionTitle}>Estabelecimentos</Text>
         <View style={{ paddingHorizontal: spacing.md, gap: spacing.sm }}>
-          {ESTABLISHMENTS.map((e) => (
+          {stores.map((e) => (
             <TouchableOpacity
               key={e.id}
               style={styles.storeCard}
@@ -209,4 +241,17 @@ const styles = StyleSheet.create({
   storeMeta: { flexDirection: "row", gap: spacing.sm, marginTop: 4 },
   metaItem: { flexDirection: "row", alignItems: "center", gap: 3 },
   metaText: { fontSize: fontSize.small, color: colors.textSecondary },
+
+  partnerCta: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    marginHorizontal: spacing.md, marginTop: spacing.md, padding: spacing.md,
+    borderRadius: radius.lg, borderWidth: 1, borderColor: colors.primary,
+    borderStyle: "dashed", backgroundColor: colors.primarySoft,
+  },
+  partnerIcon: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface,
+    alignItems: "center", justifyContent: "center",
+  },
+  partnerTitle: { color: colors.primaryDark, fontWeight: "800", fontSize: fontSize.body },
+  partnerSub: { color: colors.textSecondary, fontSize: fontSize.small, marginTop: 2 },
 });

@@ -8,24 +8,41 @@ import { orderStore } from "@/src/data/orderStore";
 import { Order, DEFAULT_DRIVER_NAME } from "@/src/data/mock";
 import { money } from "@/src/components/FinancialBreakdown";
 import { StatusPill } from "@/src/components/StatusPill";
-
-const DRIVER_ID = "driver_1";
+import { authService, User } from "@/src/services/authService";
+import { driverService, DRIVER_LEVELS, DriverLevel } from "@/src/services/driverService";
 
 export default function DriverHome() {
   const router = useRouter();
+  const [me, setMe] = useState<User | null>(null);
   const [available, setAvailable] = useState<Order[]>([]);
   const [active, setActive] = useState<Order[]>([]);
   const [completed, setCompleted] = useState<Order[]>([]);
 
   useEffect(() => {
     const refresh = async () => {
+      const u = await authService.getSession();
+      if (!u || u.role !== "driver") { router.replace("/"); return; }
+      if (u.driverStatus === "blocked") { router.replace("/driver/blocked"); return; }
+      if (u.driverStatus !== "approved") { router.replace("/driver/pending"); return; }
+      setMe(u);
       setAvailable(await orderStore.getAvailable());
-      setActive(await orderStore.getDriverActive(DRIVER_ID));
-      setCompleted(await orderStore.getDriverHistory(DRIVER_ID));
+      setActive(await orderStore.getDriverActive(u.id));
+      setCompleted(await orderStore.getDriverHistory(u.id));
     };
     refresh();
-    return orderStore.subscribe(refresh);
-  }, []);
+    const a = orderStore.subscribe(refresh);
+    const b = authService.subscribe(refresh);
+    return () => { a(); b(); };
+  }, [router]);
+
+  async function logout() {
+    await authService.logout();
+    router.replace("/auth/login");
+  }
+
+  if (!me) return null;
+  const level = (me.driverLevel ?? 1) as DriverLevel;
+  const levelInfo = DRIVER_LEVELS[level];
 
   const todayEarnings = completed
     .filter((o) => new Date(o.createdAt).toDateString() === new Date().toDateString())
@@ -210,4 +227,11 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: fontSize.bodyLarge, fontWeight: "700", color: colors.textPrimary, marginTop: spacing.sm },
   emptyText: { color: colors.textSecondary, textAlign: "center", fontSize: fontSize.small },
+  levelStrip: {
+    marginHorizontal: spacing.md, marginBottom: spacing.md, padding: spacing.sm,
+    borderRadius: radius.lg, borderWidth: 1.5, flexDirection: "row",
+    alignItems: "center", gap: spacing.sm, backgroundColor: colors.surface,
+  },
+  levelTitle: { fontWeight: "800", color: colors.textPrimary, fontSize: fontSize.body },
+  levelHint: { color: colors.textSecondary, fontSize: fontSize.small, marginTop: 2 },
 });
