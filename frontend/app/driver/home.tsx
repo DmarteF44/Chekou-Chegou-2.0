@@ -57,16 +57,25 @@ export default function DriverHome() {
             <Ionicons name="bicycle" size={22} color={colors.white} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.greet}>Olá, {DEFAULT_DRIVER_NAME.split(" ")[0]}</Text>
-            <Text style={styles.subtitle}>Você está online</Text>
+            <Text style={styles.greet}>Olá, {me.name.split(" ")[0]}</Text>
+            <Text style={styles.subtitle}>Área do Motorista Parceiro</Text>
           </View>
           <TouchableOpacity
-            onPress={() => router.push("/")}
+            onPress={logout}
             style={styles.profileBtn}
-            testID="driver-back-to-roles"
+            testID="driver-logout"
           >
-            <Ionicons name="swap-horizontal" size={20} color={colors.primary} />
+            <Ionicons name="log-out-outline" size={20} color={colors.primary} />
           </TouchableOpacity>
+        </View>
+
+        {/* Level strip */}
+        <View style={[styles.levelStrip, { borderColor: levelInfo.color }]}>
+          <Ionicons name="medal" size={20} color={levelInfo.color} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.levelTitle} testID="driver-level-name">Nível {level} • {levelInfo.name}</Text>
+            <Text style={styles.levelHint} testID="driver-level-limit">Limite operacional: até R$ {levelInfo.limit}</Text>
+          </View>
         </View>
 
         {/* Earnings */}

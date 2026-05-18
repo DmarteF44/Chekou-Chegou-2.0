@@ -87,9 +87,9 @@ export default function DriverOrder() {
       return;
     }
     await orderStore.setStatus(order!.id, "Entregue");
-    Alert.alert("Entrega concluída!", "Taxa de entrega liberada para seu saldo.", [
-      { text: "OK", onPress: () => router.replace("/driver/home") },
-    ]);
+    // Navigate FIRST (Alert per-button onPress doesn't fire reliably on react-native-web).
+    router.replace("/driver/home");
+    Alert.alert("Entrega concluída!", "Taxa de entrega liberada para seu saldo.");
   }
 
   const nextLabel = (() => {
