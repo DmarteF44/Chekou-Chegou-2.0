@@ -1,6 +1,7 @@
 export type Establishment = {
   id: string;
   name: string;
+  branch: string;
   category: string;
   image: string;
   deliveryTime: string;
@@ -30,6 +31,7 @@ export const ESTABLISHMENTS: Establishment[] = [
   {
     id: "tosta-2",
     name: "Supermercado Tosta 2",
+    branch: "Mercado",
     category: "Mercado",
     image: "",
     deliveryTime: "30–45 min",
@@ -39,6 +41,7 @@ export const ESTABLISHMENTS: Establishment[] = [
   {
     id: "farmacia-parceira",
     name: "Farmácia Parceira",
+    branch: "Farmácia",
     category: "Farmácia",
     image: "",
     deliveryTime: "20–30 min",
@@ -48,6 +51,7 @@ export const ESTABLISHMENTS: Establishment[] = [
   {
     id: "eletronicos-jatai",
     name: "Eletrônicos Jataí",
+    branch: "Eletrônicos",
     category: "Eletrônicos",
     image: "",
     deliveryTime: "30–50 min",

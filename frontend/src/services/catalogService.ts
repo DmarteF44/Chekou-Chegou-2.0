@@ -2,9 +2,11 @@
 import { storage } from "@/src/utils/storage";
 import { ESTABLISHMENTS as INITIAL_STORES, Establishment } from "@/src/data/mock";
 
-export type StoreType = "mais_pedido" | "parceiro_oficial" | "teste";
+export type StoreBranch = "Mercado" | "Farmácia" | "Eletrônicos" | "Outros";
+export type StoreType = "principal" | "parceiro" | "teste" | "em_breve";
 
 export type Store = Establishment & {
+  branch: StoreBranch;
   type: StoreType;
   address: string;
   phone?: string;
@@ -14,11 +16,30 @@ export type Store = Establishment & {
 };
 
 export type ProductCategory =
-  | "Mercado" | "Farmácia" | "Eletrônicos" | "Bebidas" | "Higiene" | "Limpeza" | "Padaria" | "Outros";
+  | "Mercearia" | "Bebidas" | "Limpeza" | "Higiene" | "Padaria" | "Hortifruti" | "Açougue"
+  | "Medicamentos sem receita" | "Perfumaria" | "Curativos" | "Infantil"
+  | "Cabos" | "Carregadores" | "Fones" | "Acessórios" | "Informática" | "Celulares"
+  | "Outros";
 
-export const PRODUCT_CATEGORIES: ProductCategory[] = [
-  "Mercado", "Farmácia", "Eletrônicos", "Bebidas", "Higiene", "Limpeza", "Padaria", "Outros",
+export const STORE_BRANCHES: StoreBranch[] = ["Mercado", "Farmácia", "Eletrônicos", "Outros"];
+
+export const STORE_TYPES: { id: StoreType; label: string }[] = [
+  { id: "principal", label: "Principal" },
+  { id: "parceiro", label: "Parceiro" },
+  { id: "teste", label: "Teste" },
+  { id: "em_breve", label: "Em breve" },
 ];
+
+export const CATEGORIES_BY_BRANCH: Record<StoreBranch, ProductCategory[]> = {
+  Mercado: ["Mercearia", "Bebidas", "Limpeza", "Higiene", "Padaria", "Hortifruti", "Açougue", "Outros"],
+  Farmácia: ["Medicamentos sem receita", "Higiene", "Perfumaria", "Curativos", "Infantil", "Outros"],
+  Eletrônicos: ["Cabos", "Carregadores", "Fones", "Acessórios", "Informática", "Celulares", "Outros"],
+  Outros: ["Outros"],
+};
+
+export const PRODUCT_CATEGORIES: ProductCategory[] = Array.from(
+  new Set(Object.values(CATEGORIES_BY_BRANCH).flat()),
+);
 
 export type Product = {
   id: string;
@@ -36,54 +57,124 @@ export type Product = {
 const STORES_KEY = "chekou_stores_v1";
 const PRODUCTS_KEY = "chekou_products_v1";
 const SEED_KEY = "chekou_catalog_seed_v1";
-const SEED_VERSION = "4";
+const SEED_VERSION = "5";
 const DEPRECATED_STORE_IDS = ["mercad" + "ao"];
 
 const SEED_PRODUCTS: Product[] = [
-  { id: "p1", name: "Arroz tipo 1 5kg", category: "Mercado", storeId: "tosta-2", price: 28.9, active: true, confirmInStore: true },
-  { id: "p2", name: "Feijão carioca 1kg", category: "Mercado", storeId: "tosta-2", price: 7.5, active: true, confirmInStore: true },
-  { id: "p3", name: "Leite integral 1L", category: "Mercado", storeId: "tosta-2", price: 5.2, promoPrice: 4.5, active: true, confirmInStore: true },
+  { id: "p1", name: "Arroz tipo 1 5kg", category: "Mercearia", storeId: "tosta-2", price: 28.9, active: true, confirmInStore: true },
+  { id: "p2", name: "Feijão carioca 1kg", category: "Mercearia", storeId: "tosta-2", price: 7.5, active: true, confirmInStore: true },
+  { id: "p3", name: "Leite integral 1L", category: "Mercearia", storeId: "tosta-2", price: 5.2, promoPrice: 4.5, active: true, confirmInStore: true },
   { id: "p4", name: "Coca-Cola 2L", category: "Bebidas", storeId: "tosta-2", price: 9.9, active: true, confirmInStore: true },
   { id: "p5", name: "Detergente", category: "Limpeza", storeId: "tosta-2", price: 2.9, active: true, confirmInStore: true },
   { id: "p6", name: "Pão francês kg", category: "Padaria", storeId: "tosta-2", price: 14.9, active: true, confirmInStore: true },
-  { id: "p7", name: "Dipirona 500mg", category: "Farmácia", storeId: "farmacia-parceira", price: 12.0, active: true, confirmInStore: true, notes: "Apenas itens sem retenção de receita." },
+  { id: "p7", name: "Dipirona 500mg", category: "Medicamentos sem receita", storeId: "farmacia-parceira", price: 12.0, active: true, confirmInStore: true, notes: "Apenas itens sem retenção de receita." },
   { id: "p8", name: "Álcool 70% 500ml", category: "Higiene", storeId: "farmacia-parceira", price: 8.5, active: true, confirmInStore: true },
-  { id: "p9", name: "Cabo USB-C 1m", category: "Eletrônicos", storeId: "eletronicos-jatai", price: 19.9, active: true, confirmInStore: true },
-  { id: "p10", name: "Carregador Turbo USB-C", category: "Eletrônicos", storeId: "eletronicos-jatai", price: 49.9, active: true, confirmInStore: true },
-  { id: "p11", name: "Fone de ouvido P2", category: "Eletrônicos", storeId: "eletronicos-jatai", price: 29.9, active: true, confirmInStore: true },
-  { id: "p12", name: "Película de vidro", category: "Eletrônicos", storeId: "eletronicos-jatai", price: 15.0, active: true, confirmInStore: true },
-  { id: "p13", name: "Mouse sem fio", category: "Eletrônicos", storeId: "eletronicos-jatai", price: 39.9, active: true, confirmInStore: true },
+  { id: "p9", name: "Cabo USB-C 1m", category: "Cabos", storeId: "eletronicos-jatai", price: 19.9, active: true, confirmInStore: true },
+  { id: "p10", name: "Carregador Turbo USB-C", category: "Carregadores", storeId: "eletronicos-jatai", price: 49.9, active: true, confirmInStore: true },
+  { id: "p11", name: "Fone de ouvido P2", category: "Fones", storeId: "eletronicos-jatai", price: 29.9, active: true, confirmInStore: true },
+  { id: "p12", name: "Película de vidro", category: "Acessórios", storeId: "eletronicos-jatai", price: 15.0, active: true, confirmInStore: true },
+  { id: "p13", name: "Mouse sem fio", category: "Informática", storeId: "eletronicos-jatai", price: 39.9, active: true, confirmInStore: true },
 ];
+
+export function normalizeStoreBranch(value?: string): StoreBranch {
+  if (value === "Farmácia") return "Farmácia";
+  if (value === "Eletrônicos") return "Eletrônicos";
+  if (value === "Mercado") return "Mercado";
+  return "Outros";
+}
+
+export function normalizeStoreType(value?: string): StoreType {
+  if (value === "principal" || value === `mais_${"pedido"}`) return "principal";
+  if (value === "parceiro" || value === `parceiro_${"oficial"}`) return "parceiro";
+  if (value === "em_breve") return "em_breve";
+  return "teste";
+}
+
+export function getStoreBranch(store?: Partial<Pick<Store, "branch" | "category">> | null): StoreBranch {
+  return normalizeStoreBranch(store?.branch ?? store?.category);
+}
+
+export function categoriesForBranch(branch?: StoreBranch): ProductCategory[] {
+  return CATEGORIES_BY_BRANCH[branch ?? "Outros"] ?? CATEGORIES_BY_BRANCH.Outros;
+}
+
+function normalizeProductCategory(category: string | undefined, branch: StoreBranch): ProductCategory {
+  const compatible = categoriesForBranch(branch);
+  return compatible.includes(category as ProductCategory) ? category as ProductCategory : compatible[0];
+}
+
+function sanitizeStore(store: Store): Store {
+  const branch = normalizeStoreBranch(store.branch ?? store.category);
+  return {
+    ...store,
+    name: store.name.trim(),
+    branch,
+    category: branch,
+    image: store.image?.trim() ?? "",
+    deliveryTime: store.deliveryTime?.trim() || "30–45 min",
+    description: store.description?.trim() || "Estabelecimento local.",
+    type: normalizeStoreType(store.type),
+    address: store.address?.trim() || "Jataí-GO",
+    phone: store.phone?.trim(),
+    baseFee: Math.max(0, Number(store.baseFee) || 0),
+    notes: store.notes?.trim(),
+    active: Boolean(store.active),
+  };
+}
+
+function sanitizeProduct(product: Product, store: Store): Product {
+  const branch = getStoreBranch(store);
+  const promoPrice = typeof product.promoPrice === "number" && product.promoPrice >= 0 ? product.promoPrice : undefined;
+  return {
+    ...product,
+    name: product.name.trim(),
+    storeId: store.id,
+    category: normalizeProductCategory(product.category, branch),
+    price: Math.max(0, Number(product.price) || 0),
+    promoPrice,
+    imageUrl: product.imageUrl?.trim() || undefined,
+    notes: product.notes?.trim(),
+    active: Boolean(product.active),
+    confirmInStore: Boolean(product.confirmInStore),
+  };
+}
 
 async function ensureSeed() {
   const seeded = await storage.getItem<string>(SEED_KEY, "");
   if (seeded === SEED_VERSION) return;
-  const storeDetails: Record<string, Pick<Store, "type" | "address" | "phone" | "baseFee" | "active">> = {
+  const storeDetails: Record<string, Pick<Store, "branch" | "type" | "address" | "phone" | "baseFee" | "active" | "notes">> = {
     "tosta-2": {
-      type: "mais_pedido",
+      branch: "Mercado",
+      type: "principal",
       address: "Av. Rio Claro, Jataí-GO",
       phone: "(64) 3636-0000",
       baseFee: 8,
       active: true,
+      notes: "Mercado principal para demonstração local.",
     },
     "farmacia-parceira": {
-      type: "parceiro_oficial",
+      branch: "Farmácia",
+      type: "parceiro",
       address: "R. das Flores, Jataí-GO",
       phone: "(64) 3636-0000",
       baseFee: 8,
       active: true,
+      notes: "Itens sem retenção de receita no MVP local.",
     },
     "eletronicos-jatai": {
+      branch: "Eletrônicos",
       type: "teste",
       address: "Av. Goiás, Centro, Jataí-GO",
       phone: "(64) 3636-0000",
       baseFee: 8,
       active: true,
+      notes: "Loja de eletrônicos usada na apresentação.",
     },
   };
-  const seedStores: Store[] = INITIAL_STORES.map((e) => ({
+  const seedStores: Store[] = INITIAL_STORES.map((e) => sanitizeStore({
     ...e,
     ...(storeDetails[e.id] ?? {
+      branch: normalizeStoreBranch(e.category),
       type: "teste" as StoreType,
       address: "Jataí-GO",
       phone: "(64) 3636-0000",
@@ -95,7 +186,7 @@ async function ensureSeed() {
   const rawProducts = (await storage.getItem<string>(PRODUCTS_KEY, "")) || "";
   const stores = rawStores ? (JSON.parse(rawStores) as Store[]) : [];
   const products = rawProducts ? (JSON.parse(rawProducts) as Product[]) : [];
-  const storesById = new Map(stores.map((s) => [s.id, s]));
+  const storesById = new Map(stores.map((s) => [s.id, sanitizeStore(s)]));
   const productsById = new Map(products.map((p) => [p.id, p]));
   DEPRECATED_STORE_IDS.forEach((id) => storesById.delete(id));
   products.forEach((p) => {
@@ -103,6 +194,11 @@ async function ensureSeed() {
   });
   seedStores.forEach((s) => storesById.set(s.id, storesById.has(s.id) ? { ...storesById.get(s.id)!, ...s } : s));
   SEED_PRODUCTS.forEach((p) => productsById.set(p.id, productsById.has(p.id) ? { ...productsById.get(p.id)!, ...p } : p));
+  Array.from(productsById.entries()).forEach(([id, product]) => {
+    const store = storesById.get(product.storeId);
+    if (!store) productsById.delete(id);
+    else productsById.set(id, sanitizeProduct(product, store));
+  });
   await storage.setItem(STORES_KEY, JSON.stringify(Array.from(storesById.values())));
   await storage.setItem(PRODUCTS_KEY, JSON.stringify(Array.from(productsById.values())));
   await storage.setItem(SEED_KEY, SEED_VERSION);
@@ -146,9 +242,12 @@ export const catalogService = {
     return all.find((s) => s.id === id);
   },
   async upsertStore(store: Store): Promise<void> {
+    if (!store.name?.trim()) throw new Error("Estabelecimento sem nome.");
+    if (!normalizeStoreBranch(store.branch ?? store.category)) throw new Error("Estabelecimento sem ramo.");
     const all = await readStores();
     const idx = all.findIndex((s) => s.id === store.id);
-    if (idx >= 0) all[idx] = store; else all.push(store);
+    const sanitized = sanitizeStore(store);
+    if (idx >= 0) all[idx] = sanitized; else all.push(sanitized);
     await writeStores(all);
   },
   async deleteStore(id: string): Promise<void> {
@@ -157,16 +256,29 @@ export const catalogService = {
   },
 
   // Products
-  async listProducts(opts?: { storeId?: string; activeOnly?: boolean }): Promise<Product[]> {
+  async listProducts(opts?: { storeId?: string; activeOnly?: boolean; category?: ProductCategory; branch?: StoreBranch }): Promise<Product[]> {
     let all = await readProducts();
     if (opts?.storeId) all = all.filter((p) => p.storeId === opts.storeId);
     if (opts?.activeOnly) all = all.filter((p) => p.active);
+    if (opts?.category) all = all.filter((p) => p.category === opts.category);
+    if (opts?.branch) {
+      const stores = await readStores();
+      const byId = new Map(stores.map((s) => [s.id, s]));
+      all = all.filter((p) => getStoreBranch(byId.get(p.storeId)) === opts.branch);
+    }
     return all;
   },
   async upsertProduct(p: Product): Promise<void> {
+    if (!p.name?.trim()) throw new Error("Produto sem nome.");
+    if (!p.storeId) throw new Error("Produto sem estabelecimento.");
+    if (Number(p.price) < 0 || Number(p.promoPrice ?? 0) < 0) throw new Error("Preço inválido.");
+    const stores = await readStores();
+    const store = stores.find((s) => s.id === p.storeId);
+    if (!store) throw new Error("Estabelecimento do produto não encontrado.");
     const all = await readProducts();
     const idx = all.findIndex((x) => x.id === p.id);
-    if (idx >= 0) all[idx] = p; else all.push(p);
+    const sanitized = sanitizeProduct(p, store);
+    if (idx >= 0) all[idx] = sanitized; else all.push(sanitized);
     await writeProducts(all);
   },
   async deleteProduct(id: string): Promise<void> {

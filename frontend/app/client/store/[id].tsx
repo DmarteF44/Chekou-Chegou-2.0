@@ -10,7 +10,9 @@ import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
 import { DemoNotice } from "@/src/components/DemoNotice";
 import { money } from "@/src/components/FinancialBreakdown";
-import { catalogService, Product, Store } from "@/src/services/catalogService";
+import {
+  catalogService, Product, Store, categoriesForBranch, getStoreBranch,
+} from "@/src/services/catalogService";
 import { OrderItem } from "@/src/data/mock";
 
 export default function StoreOrder() {
@@ -22,6 +24,7 @@ export default function StoreOrder() {
   const [customText, setCustomText] = useState("");
   const [customValue, setCustomValue] = useState("");
   const [notes, setNotes] = useState("");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
@@ -54,8 +57,27 @@ export default function StoreOrder() {
   const cartSubtotal = selectedItems.reduce((acc, item) => acc + item.total, 0);
   const hasCustom = customText.trim().length > 0 && customSubtotal > 0;
   const valid = !!store && (selectedItems.length > 0 || hasCustom);
-  const isPharmacy = store?.category?.toLowerCase().includes("farmácia") || store?.id === "farmacia-parceira";
-  const storeIcon: keyof typeof Ionicons.glyphMap = store?.category?.toLowerCase().includes("eletr") ? "hardware-chip" : isPharmacy ? "medical" : "storefront";
+  const storeBranch = getStoreBranch(store);
+  const isPharmacy = storeBranch === "Farmácia" || store?.id === "farmacia-parceira";
+  const storeIcon: keyof typeof Ionicons.glyphMap = storeBranch === "Eletrônicos" ? "hardware-chip" : isPharmacy ? "medical" : "storefront";
+  const filteredProducts = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return products;
+    return products.filter((product) => product.name.toLowerCase().includes(term));
+  }, [products, search]);
+  const groupedProducts = useMemo(() => {
+    const categoryOrder = categoriesForBranch(storeBranch);
+    const knownGroups = categoryOrder
+      .map((category) => ({
+        category,
+        products: filteredProducts.filter((product) => product.category === category),
+      }))
+      .filter((group) => group.products.length > 0);
+    const otherProducts = filteredProducts.filter((product) => !categoryOrder.includes(product.category));
+    return otherProducts.length > 0
+      ? [...knownGroups, { category: "Outros" as const, products: otherProducts }]
+      : knownGroups;
+  }, [filteredProducts, storeBranch]);
 
   function changeQty(productId: string, delta: number) {
     setQuantities((current) => ({
@@ -128,40 +150,58 @@ export default function StoreOrder() {
           )}
 
           <Text style={styles.sectionTitle}>Produtos disponíveis</Text>
+          <View style={styles.searchBox}>
+            <Ionicons name="search" size={18} color={colors.textSecondary} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Buscar produto"
+              placeholderTextColor={colors.textTertiary}
+              style={styles.searchInput}
+              testID="store-product-search"
+            />
+          </View>
           {products.length === 0 ? (
             <View style={styles.emptyBox}><Text style={styles.hint}>Nenhum produto ativo neste estabelecimento.</Text></View>
-          ) : products.map((p) => {
-            const qty = quantities[p.id] ?? 0;
-            const unitPrice = p.promoPrice ?? p.price;
-            return (
-              <View key={p.id} style={[styles.productCard, qty > 0 && styles.productSelected]}>
-                <TouchableOpacity style={styles.productMain} onPress={() => changeQty(p.id, qty > 0 ? -qty : 1)} testID={`product-select-${p.id}`}>
-                  <View style={[styles.check, qty > 0 && styles.checkOn]}>
-                    {qty > 0 ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+          ) : groupedProducts.length === 0 ? (
+            <View style={styles.emptyBox}><Text style={styles.hint}>Nenhum produto encontrado na busca.</Text></View>
+          ) : groupedProducts.map((group) => (
+            <View key={group.category} style={styles.categoryBlock}>
+              <Text style={styles.categoryTitle}>{group.category}</Text>
+              {group.products.map((p) => {
+                const qty = quantities[p.id] ?? 0;
+                const unitPrice = p.promoPrice ?? p.price;
+                return (
+                  <View key={p.id} style={[styles.productCard, qty > 0 && styles.productSelected]}>
+                    <TouchableOpacity style={styles.productMain} onPress={() => changeQty(p.id, qty > 0 ? -qty : 1)} testID={`product-select-${p.id}`}>
+                      <View style={[styles.check, qty > 0 && styles.checkOn]}>
+                        {qty > 0 ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.productName}>{p.name}</Text>
+                        <Text style={styles.productCat}>{p.category}</Text>
+                        {p.notes ? <Text style={styles.hint}>{p.notes}</Text> : null}
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        {p.promoPrice ? <Text style={styles.oldPrice}>{money(p.price)}</Text> : null}
+                        <Text style={styles.price}>{money(unitPrice)}</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <View style={styles.qtyRow}>
+                      <Text style={styles.lineTotal}>{qty > 0 ? money(qty * unitPrice) : "Toque para adicionar"}</Text>
+                      <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(p.id, -1)} testID={`product-minus-${p.id}`}>
+                        <Ionicons name="remove" size={18} color={colors.primary} />
+                      </TouchableOpacity>
+                      <Text style={styles.qty}>{qty}</Text>
+                      <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(p.id, 1)} testID={`product-plus-${p.id}`}>
+                        <Ionicons name="add" size={18} color={colors.primary} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.productName}>{p.name}</Text>
-                    <Text style={styles.productCat}>{p.category}</Text>
-                    {p.notes ? <Text style={styles.hint}>{p.notes}</Text> : null}
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    {p.promoPrice ? <Text style={styles.oldPrice}>{money(p.price)}</Text> : null}
-                    <Text style={styles.price}>{money(unitPrice)}</Text>
-                  </View>
-                </TouchableOpacity>
-                <View style={styles.qtyRow}>
-                  <Text style={styles.lineTotal}>{qty > 0 ? money(qty * unitPrice) : "Toque para adicionar"}</Text>
-                  <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(p.id, -1)} testID={`product-minus-${p.id}`}>
-                    <Ionicons name="remove" size={18} color={colors.primary} />
-                  </TouchableOpacity>
-                  <Text style={styles.qty}>{qty}</Text>
-                  <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(p.id, 1)} testID={`product-plus-${p.id}`}>
-                    <Ionicons name="add" size={18} color={colors.primary} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
+                );
+              })}
+            </View>
+          ))}
 
           <Text style={styles.sectionTitle}>Item personalizado opcional</Text>
           <View style={styles.card}>
@@ -243,6 +283,14 @@ const styles = StyleSheet.create({
   storeFee: { fontSize: fontSize.small, color: colors.primary, marginTop: 4, fontWeight: "700" },
   sectionTitle: { fontSize: fontSize.bodyLarge, fontWeight: "800", color: colors.textPrimary },
   card: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.borderLight },
+  searchBox: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    backgroundColor: colors.surface, paddingHorizontal: spacing.md, minHeight: 48,
+  },
+  searchInput: { flex: 1, color: colors.textPrimary, fontSize: fontSize.body },
+  categoryBlock: { gap: spacing.sm },
+  categoryTitle: { color: colors.primaryDark, fontWeight: "900", fontSize: fontSize.body },
   productCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.borderLight },
   productSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   productMain: { flexDirection: "row", alignItems: "center", gap: spacing.sm },

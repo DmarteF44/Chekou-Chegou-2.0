@@ -9,13 +9,14 @@ import { orderStore } from "@/src/data/orderStore";
 import { StatusPill } from "@/src/components/StatusPill";
 import { DemoNotice } from "@/src/components/DemoNotice";
 import { authService, User } from "@/src/services/authService";
-import { catalogService, Store } from "@/src/services/catalogService";
+import { catalogService, getStoreBranch, Store, StoreBranch } from "@/src/services/catalogService";
 import { marketingService } from "@/src/services/marketingService";
 
-function iconForStore(category: string): keyof typeof Ionicons.glyphMap {
-  const normalized = category.toLowerCase();
-  if (normalized.includes("farm")) return "medical";
-  if (normalized.includes("eletr")) return "hardware-chip";
+const CLIENT_BRANCHES: StoreBranch[] = ["Mercado", "Farmácia", "Eletrônicos"];
+
+function iconForStore(branch: StoreBranch): keyof typeof Ionicons.glyphMap {
+  if (branch === "Farmácia") return "medical";
+  if (branch === "Eletrônicos") return "hardware-chip";
   return "storefront";
 }
 
@@ -25,6 +26,7 @@ export default function ClientHome() {
   const [me, setMe] = useState<User | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<StoreBranch>("Mercado");
 
   useEffect(() => {
     const refresh = async () => {
@@ -47,6 +49,10 @@ export default function ClientHome() {
     await authService.logout();
     router.replace("/auth/login");
   }
+
+  const visibleBranches = CLIENT_BRANCHES.filter((branch) => stores.some((s) => getStoreBranch(s) === branch));
+  const branches = visibleBranches.length > 0 ? visibleBranches : CLIENT_BRANCHES;
+  const storesByBranch = stores.filter((store) => getStoreBranch(store) === selectedBranch);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -145,12 +151,29 @@ export default function ClientHome() {
           </TouchableOpacity>
         )}
 
+        {/* Branches */}
+        <Text style={styles.sectionTitle}>Ramos</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.branchRow}>
+          {branches.map((branch) => (
+            <TouchableOpacity
+              key={branch}
+              style={[styles.branchChip, selectedBranch === branch && styles.branchChipActive]}
+              onPress={() => setSelectedBranch(branch)}
+              testID={`client-branch-${branch}`}
+            >
+              <Ionicons name={iconForStore(branch)} size={18} color={selectedBranch === branch ? colors.white : colors.primary} />
+              <Text style={[styles.branchText, selectedBranch === branch && { color: colors.white }]}>{branch}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
         {/* Establishments */}
-        <Text style={styles.sectionTitle}>Estabelecimentos</Text>
+        <Text style={styles.sectionTitle}>Estabelecimentos de {selectedBranch}</Text>
         <View style={{ paddingHorizontal: spacing.md, gap: spacing.sm }}>
-          {stores.map((e) => {
+          {storesByBranch.map((e) => {
             const image = e.image?.trim();
-            const icon = iconForStore(e.category);
+            const branch = getStoreBranch(e);
+            const icon = iconForStore(branch);
             return (
             <TouchableOpacity
               key={e.id}
@@ -165,7 +188,7 @@ export default function ClientHome() {
               )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.storeName} numberOfLines={1}>{e.name}</Text>
-                <Text style={styles.storeCat} numberOfLines={2}>{e.description}</Text>
+                <Text style={styles.storeCat} numberOfLines={2}>{branch} • {e.description}</Text>
                 <View style={styles.storeMeta}>
                   <View style={styles.metaItem}>
                     <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
@@ -180,6 +203,11 @@ export default function ClientHome() {
               <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
             </TouchableOpacity>
           );})}
+          {storesByBranch.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyText}>Nenhum estabelecimento ativo neste ramo.</Text>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -255,6 +283,15 @@ const styles = StyleSheet.create({
   },
   quickLabel: { fontSize: fontSize.small, color: colors.textSecondary, fontWeight: "600" },
 
+  branchRow: { paddingHorizontal: spacing.md, gap: spacing.sm },
+  branchChip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  branchChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  branchText: { color: colors.textSecondary, fontSize: fontSize.small, fontWeight: "800" },
+
   storeCard: {
     backgroundColor: colors.surface, padding: spacing.md, borderRadius: radius.lg,
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
@@ -270,6 +307,8 @@ const styles = StyleSheet.create({
   storeMeta: { flexDirection: "row", gap: spacing.sm, marginTop: 4 },
   metaItem: { flexDirection: "row", alignItems: "center", gap: 3 },
   metaText: { fontSize: fontSize.small, color: colors.textSecondary },
+  emptyBox: { padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight },
+  emptyText: { color: colors.textSecondary, fontSize: fontSize.small, fontWeight: "700" },
 
   partnerCta: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,

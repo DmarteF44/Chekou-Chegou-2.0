@@ -10,25 +10,22 @@ import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
 import { DemoNotice } from "@/src/components/DemoNotice";
-import { catalogService, Store, StoreType } from "@/src/services/catalogService";
+import {
+  catalogService, Store, StoreBranch, STORE_BRANCHES, STORE_TYPES,
+} from "@/src/services/catalogService";
 import { authService } from "@/src/services/authService";
-
-const TYPES: { id: StoreType; label: string }[] = [
-  { id: "mais_pedido", label: "Mais pedido" },
-  { id: "parceiro_oficial", label: "Parceiro oficial" },
-  { id: "teste", label: "Teste" },
-];
 
 const EMPTY: Store = {
   id: "", name: "", category: "Mercado", image: "",
   deliveryTime: "30–45 min", rating: 4.5, description: "",
-  type: "mais_pedido", address: "Jataí-GO", phone: "", baseFee: 8, active: true, notes: "",
+  branch: "Mercado", type: "principal", address: "Jataí-GO", phone: "", baseFee: 8, active: true, notes: "",
 };
 
 export default function AdminStores() {
   const router = useRouter();
   const [stores, setStores] = useState<Store[]>([]);
   const [editing, setEditing] = useState<Store | null>(null);
+  const [branchFilter, setBranchFilter] = useState<StoreBranch | "Todos">("Todos");
 
   useEffect(() => {
     const refresh = async () => {
@@ -53,10 +50,14 @@ export default function AdminStores() {
       Alert.alert("Nome inválido", "Informe o nome do estabelecimento.");
       return;
     }
+    if (!editing.branch) {
+      Alert.alert("Ramo obrigatório", "Escolha o ramo do estabelecimento.");
+      return;
+    }
     await catalogService.upsertStore({
       ...editing,
       name: editing.name.trim(),
-      category: editing.category.trim(),
+      category: editing.branch,
       description: editing.description.trim(),
       image: editing.image.trim(),
       phone: editing.phone?.trim(),
@@ -72,6 +73,8 @@ export default function AdminStores() {
     ]);
   }
 
+  const visibleStores = branchFilter === "Todos" ? stores : stores.filter((s) => s.branch === branchFilter);
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <Header
@@ -86,16 +89,29 @@ export default function AdminStores() {
         <DemoNotice />
         <Text style={styles.notice}>
           O Chekou Ganhou é uma plataforma independente de compra assistida e entrega.
-          Estabelecimentos exibidos como mais pedidos não representam parceria oficial, salvo indicação expressa.
+          Estabelecimentos de teste não representam parceria oficial, salvo indicação expressa.
         </Text>
-        {stores.map((s) => (
+        <Text style={styles.label}>Filtrar por ramo</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs }}>
+          {(["Todos", ...STORE_BRANCHES] as const).map((branch) => (
+            <TouchableOpacity
+              key={branch}
+              style={[styles.filterChip, branchFilter === branch && styles.filterChipActive]}
+              onPress={() => setBranchFilter(branch)}
+              testID={`admin-store-filter-${branch}`}
+            >
+              <Text style={[styles.filterText, branchFilter === branch && { color: colors.white }]}>{branch}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {visibleStores.map((s) => (
           <View key={s.id} style={styles.card}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>{s.name}</Text>
-              <Text style={styles.muted}>{s.category} • {s.deliveryTime} • {s.address}</Text>
+              <Text style={styles.muted}>{s.branch} • {s.deliveryTime} • {s.address}</Text>
               <View style={styles.badges}>
                 <View style={[styles.badge, { backgroundColor: colors.primarySoft }]}>
-                  <Text style={[styles.badgeText, { color: colors.primary }]}>{TYPES.find((t) => t.id === s.type)?.label}</Text>
+                  <Text style={[styles.badgeText, { color: colors.primary }]}>{STORE_TYPES.find((t) => t.id === s.type)?.label}</Text>
                 </View>
                 <View style={[styles.badge, { backgroundColor: s.active ? colors.primarySoft : colors.errorSoft }]}>
                   <Text style={[styles.badgeText, { color: s.active ? colors.primary : colors.error }]}>
@@ -125,11 +141,24 @@ export default function AdminStores() {
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
               <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
                 <Field label="Nome" value={editing.name} onChange={(v) => setEditing({ ...editing, name: v })} testID="store-name" />
-                <Field label="Categoria" value={editing.category} onChange={(v) => setEditing({ ...editing, category: v })} testID="store-cat" />
+
+                <Text style={styles.label}>Ramo</Text>
+                <View style={styles.typeRow}>
+                  {STORE_BRANCHES.map((branch) => (
+                    <TouchableOpacity
+                      key={branch}
+                      style={[styles.typeBtn, editing.branch === branch && styles.typeActive]}
+                      onPress={() => setEditing({ ...editing, branch, category: branch })}
+                      testID={`store-branch-${branch}`}
+                    >
+                      <Text style={[styles.typeText, editing.branch === branch && { color: colors.white }]}>{branch}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
                 <Text style={styles.label}>Tipo</Text>
                 <View style={styles.typeRow}>
-                  {TYPES.map((t) => (
+                  {STORE_TYPES.map((t) => (
                     <TouchableOpacity
                       key={t.id}
                       style={[styles.typeBtn, editing.type === t.id && styles.typeActive]}
@@ -212,6 +241,9 @@ const styles = StyleSheet.create({
   typeBtn: { flex: 1, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, alignItems: "center", backgroundColor: colors.surface },
   typeActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   typeText: { color: colors.textSecondary, fontWeight: "600", fontSize: fontSize.small },
+  filterChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterText: { color: colors.textSecondary, fontWeight: "700", fontSize: fontSize.small },
   toggleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   toggle: { width: 36, height: 22, borderRadius: 11, backgroundColor: colors.border },
   toggleOn: { backgroundColor: colors.primary },
