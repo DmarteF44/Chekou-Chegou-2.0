@@ -19,6 +19,7 @@ import { catalogService } from "@/src/services/catalogService";
 import { marketingService } from "@/src/services/marketingService";
 import { DRIVER_LEVELS } from "@/src/services/driverService";
 import { Coupon, Order, ORDER_STATUSES, OrderStatus, Promotion } from "@/src/data/mock";
+import { USE_SUPABASE } from "@/src/config/runtime";
 
 const TABS = ["Resumo", "Pedidos", "Motoristas", "Usuários", "Lojas", "Produtos", "Cupons", "Disputas"] as const;
 type Tab = typeof TABS[number];
@@ -38,7 +39,7 @@ export default function AdminIndex() {
   useEffect(() => {
     (async () => {
       const u = await authService.getSession();
-      if (!u || u.role !== "admin") {
+      if (!u || (u.role !== "admin" && u.role !== "super_admin")) {
         Alert.alert("Acesso restrito", "Faça login como admin para acessar.");
         router.replace("/auth/login");
         return;
@@ -110,6 +111,10 @@ export default function AdminIndex() {
     if (exists) {
       await authService.update(editingDriver.id, editingDriver);
     } else {
+      if (USE_SUPABASE) {
+        Alert.alert("Cadastro real", "No Supabase, o entregador precisa criar a conta pelo app. Depois o Admin aprova e edita o perfil aqui.");
+        return;
+      }
       const created = await authService.signup({
         name: editingDriver.name,
         email: editingDriver.email,
@@ -126,8 +131,10 @@ export default function AdminIndex() {
         driverLevel: editingDriver.driverLevel,
         operationalLimit: editingDriver.operationalLimit,
       });
-      await authService.logout();
-      await authService.login(me!.email, me!.password);
+      if (me?.password) {
+        await authService.logout();
+        await authService.login(me.email, me.password);
+      }
     }
     setEditingDriver(null);
   }
@@ -338,7 +345,9 @@ export default function AdminIndex() {
                 <DriverField label="Nome" value={editingDriver.name} onChange={(v) => setEditingDriver({ ...editingDriver, name: v })} />
                 <DriverField label="E-mail" value={editingDriver.email} onChange={(v) => setEditingDriver({ ...editingDriver, email: v })} keyboardType="email-address" />
                 <DriverField label="Telefone" value={editingDriver.phone} onChange={(v) => setEditingDriver({ ...editingDriver, phone: v })} keyboardType="phone-pad" />
-                <DriverField label="Senha" value={editingDriver.password} onChange={(v) => setEditingDriver({ ...editingDriver, password: v })} />
+                {!USE_SUPABASE ? (
+                  <DriverField label="Senha" value={editingDriver.password ?? ""} onChange={(v) => setEditingDriver({ ...editingDriver, password: v })} />
+                ) : null}
                 <DriverField label="Limite operacional" value={String(editingDriver.operationalLimit ?? "")} onChange={(v) => setEditingDriver({ ...editingDriver, operationalLimit: Number(v.replace(",", ".")) || 0 })} keyboardType="numeric" />
 
                 <Text style={styles.muted}>Nível</Text>

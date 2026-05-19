@@ -1,6 +1,8 @@
 // catalogService — establishments + products CRUD via AsyncStorage.
 import { storage } from "@/src/utils/storage";
 import { ESTABLISHMENTS as INITIAL_STORES, Establishment } from "@/src/data/mock";
+import { USE_SUPABASE, friendlySupabaseError } from "@/src/config/runtime";
+import { supabase } from "@/src/lib/supabase";
 
 export type StoreBranch = "Mercado" | "Farmácia" | "Eletrônicos" | "Outros";
 export type StoreType = "principal" | "parceiro" | "teste" | "em_breve";
@@ -207,6 +209,79 @@ async function ensureSeed() {
 const listeners = new Set<() => void>();
 function notify() { listeners.forEach((l) => l()); }
 
+function isUuid(id?: string) {
+  return Boolean(id?.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i));
+}
+
+function mapStore(row: any): Store {
+  const branch = normalizeStoreBranch(row.branch);
+  return {
+    id: row.id,
+    name: row.name ?? "",
+    branch,
+    category: branch,
+    image: row.image_url ?? "",
+    deliveryTime: row.delivery_time ?? "30–45 min",
+    rating: Number(row.rating ?? 4.7),
+    description: row.description ?? row.notes ?? "",
+    type: normalizeStoreType(row.type),
+    address: row.address ?? "Jataí-GO",
+    phone: row.phone ?? "",
+    baseFee: Number(row.base_fee ?? 8),
+    active: row.active ?? true,
+    notes: row.notes ?? "",
+  };
+}
+
+function mapProduct(row: any): Product {
+  return {
+    id: row.id,
+    name: row.name ?? "",
+    category: row.category as ProductCategory,
+    storeId: row.establishment_id,
+    price: Number(row.price ?? 0),
+    promoPrice: row.promo_price === null || row.promo_price === undefined ? undefined : Number(row.promo_price),
+    active: row.active ?? true,
+    confirmInStore: row.confirm_in_store ?? true,
+    imageUrl: row.image_url ?? undefined,
+    notes: row.notes ?? undefined,
+  };
+}
+
+function storePayload(store: Store) {
+  const clean = sanitizeStore(store);
+  return {
+    name: clean.name,
+    branch: clean.branch,
+    type: clean.type,
+    address: clean.address,
+    phone: clean.phone,
+    base_fee: clean.baseFee,
+    active: clean.active,
+    image_url: clean.image || null,
+    notes: clean.notes,
+    delivery_time: clean.deliveryTime,
+    rating: clean.rating,
+    description: clean.description,
+  };
+}
+
+function productPayload(product: Product, store: Store) {
+  const clean = sanitizeProduct(product, store);
+  return {
+    establishment_id: clean.storeId,
+    name: clean.name,
+    branch: getStoreBranch(store),
+    category: clean.category,
+    price: clean.price,
+    promo_price: clean.promoPrice ?? null,
+    active: clean.active,
+    confirm_in_store: clean.confirmInStore,
+    image_url: clean.imageUrl ?? null,
+    notes: clean.notes,
+  };
+}
+
 async function readStores(): Promise<Store[]> {
   await ensureSeed();
   const raw = (await storage.getItem<string>(STORES_KEY, "")) || "";
@@ -234,16 +309,41 @@ export const catalogService = {
 
   // Stores
   async listStores(opts?: { activeOnly?: boolean }): Promise<Store[]> {
+    if (USE_SUPABASE && supabase) {
+      let query = supabase.from("establishments").select("*").order("name", { ascending: true });
+      if (opts?.activeOnly) query = query.eq("active", true);
+      const { data, error } = await query;
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível listar estabelecimentos."));
+      return (data ?? []).map(mapStore);
+    }
     const all = await readStores();
     return opts?.activeOnly ? all.filter((s) => s.active) : all;
   },
   async getStore(id: string): Promise<Store | undefined> {
+    if (USE_SUPABASE && supabase) {
+      const base = supabase.from("establishments").select("*");
+      const { data, error } = isUuid(id)
+        ? await base.eq("id", id).maybeSingle()
+        : await base.eq("slug", id).maybeSingle();
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível carregar estabelecimento."));
+      return data ? mapStore(data) : undefined;
+    }
     const all = await readStores();
     return all.find((s) => s.id === id);
   },
   async upsertStore(store: Store): Promise<void> {
     if (!store.name?.trim()) throw new Error("Estabelecimento sem nome.");
     if (!normalizeStoreBranch(store.branch ?? store.category)) throw new Error("Estabelecimento sem ramo.");
+    if (USE_SUPABASE && supabase) {
+      const payload = storePayload(store);
+      const query = isUuid(store.id)
+        ? supabase.from("establishments").update(payload).eq("id", store.id)
+        : supabase.from("establishments").insert(payload);
+      const { error } = await query;
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível salvar estabelecimento."));
+      notify();
+      return;
+    }
     const all = await readStores();
     const idx = all.findIndex((s) => s.id === store.id);
     const sanitized = sanitizeStore(store);
@@ -251,12 +351,28 @@ export const catalogService = {
     await writeStores(all);
   },
   async deleteStore(id: string): Promise<void> {
+    if (USE_SUPABASE && supabase) {
+      const { error } = await supabase.from("establishments").delete().eq("id", id);
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível remover estabelecimento."));
+      notify();
+      return;
+    }
     const all = (await readStores()).filter((s) => s.id !== id);
     await writeStores(all);
   },
 
   // Products
   async listProducts(opts?: { storeId?: string; activeOnly?: boolean; category?: ProductCategory; branch?: StoreBranch }): Promise<Product[]> {
+    if (USE_SUPABASE && supabase) {
+      let query = supabase.from("products").select("*").order("name", { ascending: true });
+      if (opts?.storeId) query = query.eq("establishment_id", opts.storeId);
+      if (opts?.activeOnly) query = query.eq("active", true);
+      if (opts?.category) query = query.eq("category", opts.category);
+      if (opts?.branch) query = query.eq("branch", opts.branch);
+      const { data, error } = await query;
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível listar produtos."));
+      return (data ?? []).map(mapProduct);
+    }
     let all = await readProducts();
     if (opts?.storeId) all = all.filter((p) => p.storeId === opts.storeId);
     if (opts?.activeOnly) all = all.filter((p) => p.active);
@@ -272,6 +388,18 @@ export const catalogService = {
     if (!p.name?.trim()) throw new Error("Produto sem nome.");
     if (!p.storeId) throw new Error("Produto sem estabelecimento.");
     if (Number(p.price) < 0 || Number(p.promoPrice ?? 0) < 0) throw new Error("Preço inválido.");
+    if (USE_SUPABASE && supabase) {
+      const store = await this.getStore(p.storeId);
+      if (!store) throw new Error("Estabelecimento do produto não encontrado.");
+      const payload = productPayload(p, store);
+      const query = isUuid(p.id)
+        ? supabase.from("products").update(payload).eq("id", p.id)
+        : supabase.from("products").insert(payload);
+      const { error } = await query;
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível salvar produto."));
+      notify();
+      return;
+    }
     const stores = await readStores();
     const store = stores.find((s) => s.id === p.storeId);
     if (!store) throw new Error("Estabelecimento do produto não encontrado.");
@@ -282,6 +410,12 @@ export const catalogService = {
     await writeProducts(all);
   },
   async deleteProduct(id: string): Promise<void> {
+    if (USE_SUPABASE && supabase) {
+      const { error } = await supabase.from("products").delete().eq("id", id);
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível remover produto."));
+      notify();
+      return;
+    }
     const all = (await readProducts()).filter((p) => p.id !== id);
     await writeProducts(all);
   },

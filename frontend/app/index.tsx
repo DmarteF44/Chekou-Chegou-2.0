@@ -17,7 +17,7 @@ export default function Index() {
         router.replace("/auth/login");
         return;
       }
-      if (u.role === "admin") {
+      if (u.role === "admin" || u.role === "super_admin") {
         router.replace("/admin");
         return;
       }

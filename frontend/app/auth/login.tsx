@@ -5,11 +5,11 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Button } from "@/src/components/Button";
 import { DemoNotice } from "@/src/components/DemoNotice";
 import { authService } from "@/src/services/authService";
+import { USE_SUPABASE } from "@/src/config/runtime";
 
 export default function Login() {
   const router = useRouter();
@@ -32,12 +32,6 @@ export default function Login() {
     router.replace("/");
   }
 
-  async function quickLogin(e: string, p: string) {
-    setEmail(e);
-    setPw(p);
-    await submit(e, p);
-  }
-
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
@@ -48,7 +42,7 @@ export default function Login() {
           <Text style={styles.tagline}>Peça de mercados, farmácias e lojas locais sem sair de casa.</Text>
 
           <View style={styles.form}>
-            <Text style={styles.formTitle}>Acesso local</Text>
+            <Text style={styles.formTitle}>{USE_SUPABASE ? "Entrar na sua conta" : "Entrar no modo local"}</Text>
             <Text style={styles.label}>E-mail</Text>
             <TextInput
               value={email} onChangeText={setEmail}
@@ -66,32 +60,24 @@ export default function Login() {
             <TouchableOpacity onPress={() => router.push("/auth/signup")} style={styles.linkBtn} testID="login-go-signup">
               <Text style={styles.linkText}>Não tem conta? <Text style={styles.linkStrong}>Criar conta</Text></Text>
             </TouchableOpacity>
-          </View>
-
-          <View style={styles.demoBox}>
-            <View style={styles.demoHeader}>
-              <Ionicons name="flask" size={14} color={colors.textSecondary} />
-              <Text style={styles.demoTitle}>Contas de demonstração</Text>
-            </View>
-            <DemoBtn onPress={() => quickLogin("cliente@chekou.local", "123456")} testID="demo-client" label="Entrar como Cliente teste" sub="cliente@chekou.local" />
-            <DemoBtn onPress={() => quickLogin("entregador@chekou.local", "123456")} testID="demo-driver" label="Entrar como Entregador teste" sub="entregador@chekou.local" />
-            <DemoBtn onPress={() => quickLogin("admin@chekou.local", "admin123")} testID="demo-admin" label="Admin local" sub="admin@chekou.local" />
+            <TouchableOpacity
+              onPress={() => Alert.alert("Recuperar senha", "A recuperação por e-mail será habilitada no Supabase em uma próxima etapa.")}
+              style={styles.linkBtn}
+              testID="login-forgot-password"
+            >
+              <Text style={styles.linkStrong}>Esqueci minha senha</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push("/driver/partner-signup")}
+              style={styles.partnerBtn}
+              testID="login-driver-partner"
+            >
+              <Text style={styles.partnerText}>Quero ser entregador parceiro</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
-  );
-}
-
-function DemoBtn({ onPress, label, sub, testID }: { onPress: () => void; label: string; sub: string; testID: string }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.demoBtn} testID={testID}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.demoLabel}>{label}</Text>
-        <Text style={styles.demoSub}>{sub}</Text>
-      </View>
-      <Ionicons name="arrow-forward" size={16} color={colors.primary} />
-    </TouchableOpacity>
   );
 }
 
@@ -119,16 +105,6 @@ const styles = StyleSheet.create({
   linkBtn: { alignItems: "center", padding: spacing.sm },
   linkText: { color: colors.textSecondary },
   linkStrong: { color: colors.primary, fontWeight: "700" },
-  demoBox: {
-    marginTop: spacing.md, padding: spacing.md, borderRadius: radius.lg,
-    backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderLight, gap: spacing.xs,
-  },
-  demoHeader: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 },
-  demoTitle: { color: colors.textSecondary, fontSize: fontSize.small, fontWeight: "700" },
-  demoBtn: {
-    flexDirection: "row", alignItems: "center", paddingVertical: 8, paddingHorizontal: 12,
-    borderRadius: radius.md, backgroundColor: colors.surface,
-  },
-  demoLabel: { color: colors.textPrimary, fontWeight: "600", fontSize: fontSize.body },
-  demoSub: { color: colors.textTertiary, fontSize: fontSize.small, marginTop: 2 },
+  partnerBtn: { alignItems: "center", padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.primarySoft },
+  partnerText: { color: colors.primaryDark, fontWeight: "800" },
 });

@@ -1,5 +1,7 @@
 import { COUPONS, Coupon, PROMOTIONS, Promotion } from "@/src/data/mock";
 import { storage } from "@/src/utils/storage";
+import { USE_SUPABASE, friendlySupabaseError } from "@/src/config/runtime";
+import { supabase } from "@/src/lib/supabase";
 
 const COUPONS_KEY = "chekou_coupons_v1";
 const PROMOTIONS_KEY = "chekou_promotions_v1";
@@ -10,6 +12,16 @@ const listeners = new Set<() => void>();
 
 function notify() {
   listeners.forEach((listener) => listener());
+}
+
+function mapCoupon(row: any): Coupon {
+  return {
+    code: row.code,
+    description: row.description ?? "",
+    discount: Number(row.discount ?? 0),
+    type: row.type ?? "order",
+    active: row.active ?? true,
+  };
 }
 
 async function ensureSeed() {
@@ -77,17 +89,47 @@ export const marketingService = {
   },
 
   async listCoupons(opts?: { activeOnly?: boolean }) {
+    if (USE_SUPABASE && supabase) {
+      let query = supabase.from("coupons").select("*").order("code", { ascending: true });
+      if (opts?.activeOnly) query = query.eq("active", true);
+      const { data, error } = await query;
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível listar cupons."));
+      return (data ?? []).map(mapCoupon);
+    }
     const coupons = await readCoupons();
     return opts?.activeOnly ? coupons.filter((coupon) => coupon.active !== false) : coupons;
   },
 
   async getCoupon(code: string) {
     const normalized = code.trim().toUpperCase();
+    if (USE_SUPABASE && supabase) {
+      const { data, error } = await supabase
+        .from("coupons")
+        .select("*")
+        .eq("code", normalized)
+        .eq("active", true)
+        .maybeSingle();
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível buscar cupom."));
+      return data ? mapCoupon(data) : undefined;
+    }
     const coupons = await readCoupons();
     return coupons.find((coupon) => coupon.code.toUpperCase() === normalized && coupon.active !== false);
   },
 
   async upsertCoupon(coupon: Coupon) {
+    if (USE_SUPABASE && supabase) {
+      const normalized = coupon.code.trim().toUpperCase();
+      const { error } = await supabase.from("coupons").upsert({
+        code: normalized,
+        description: coupon.description.trim(),
+        discount: Math.max(0, coupon.discount),
+        type: coupon.type,
+        active: coupon.active ?? true,
+      }, { onConflict: "code" });
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível salvar cupom."));
+      notify();
+      return;
+    }
     const coupons = await readCoupons();
     const normalized = coupon.code.trim().toUpperCase();
     const next = {
@@ -104,6 +146,12 @@ export const marketingService = {
 
   async deleteCoupon(code: string) {
     const normalized = code.trim().toUpperCase();
+    if (USE_SUPABASE && supabase) {
+      const { error } = await supabase.from("coupons").delete().eq("code", normalized);
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível remover cupom."));
+      notify();
+      return;
+    }
     await writeCoupons((await readCoupons()).filter((coupon) => coupon.code.toUpperCase() !== normalized));
   },
 

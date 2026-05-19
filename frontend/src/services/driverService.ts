@@ -1,6 +1,8 @@
 // driverService — handles local partner applications, levels, and status changes.
 import { authService, User } from "./authService";
 import { storage } from "@/src/utils/storage";
+import { USE_SUPABASE, friendlySupabaseError } from "@/src/config/runtime";
+import { supabase } from "@/src/lib/supabase";
 
 export type DriverLevel = 1 | 2 | 3 | 4;
 
@@ -45,6 +47,25 @@ async function saveApps(list: DriverApplication[]) {
 
 export const driverService = {
   async submitApplication(app: DriverApplication): Promise<void> {
+    if (USE_SUPABASE && supabase) {
+      const { error } = await supabase.from("driver_applications").insert({
+        user_id: app.userId,
+        full_name: app.fullName,
+        cpf: app.cpf,
+        phone: app.phone,
+        email: app.email,
+        vehicle_type: app.vehicleType,
+        plate: app.plate ?? null,
+        cnh: app.cnh ?? null,
+        region: app.region,
+        pix_key: app.pixKey,
+        accepted_terms: app.acceptedTerms,
+        submitted_at: new Date(app.submittedAt).toISOString(),
+      });
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível enviar cadastro de entregador."));
+      await authService.update(app.userId, { driverStatus: "pending" });
+      return;
+    }
     const list = await loadApps();
     const idx = list.findIndex((a) => a.userId === app.userId);
     if (idx >= 0) list[idx] = app; else list.push(app);
@@ -53,11 +74,53 @@ export const driverService = {
   },
 
   async getApplication(userId: string): Promise<DriverApplication | undefined> {
+    if (USE_SUPABASE && supabase) {
+      const { data, error } = await supabase
+        .from("driver_applications")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível carregar cadastro de entregador."));
+      return data ? {
+        userId: data.user_id,
+        fullName: data.full_name,
+        cpf: data.cpf ?? "",
+        phone: data.phone ?? "",
+        email: data.email ?? "",
+        vehicleType: data.vehicle_type ?? "moto",
+        plate: data.plate ?? undefined,
+        cnh: data.cnh ?? undefined,
+        region: data.region ?? "",
+        pixKey: data.pix_key ?? "",
+        acceptedTerms: data.accepted_terms ?? false,
+        submittedAt: data.submitted_at ? new Date(data.submitted_at).getTime() : Date.now(),
+      } : undefined;
+    }
     const list = await loadApps();
     return list.find((a) => a.userId === userId);
   },
 
   async getAllApplications(): Promise<DriverApplication[]> {
+    if (USE_SUPABASE && supabase) {
+      const { data, error } = await supabase.from("driver_applications").select("*").order("created_at", { ascending: false });
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível listar cadastros de entregador."));
+      return (data ?? []).map((item: any) => ({
+        userId: item.user_id,
+        fullName: item.full_name,
+        cpf: item.cpf ?? "",
+        phone: item.phone ?? "",
+        email: item.email ?? "",
+        vehicleType: item.vehicle_type ?? "moto",
+        plate: item.plate ?? undefined,
+        cnh: item.cnh ?? undefined,
+        region: item.region ?? "",
+        pixKey: item.pix_key ?? "",
+        acceptedTerms: item.accepted_terms ?? false,
+        submittedAt: item.submitted_at ? new Date(item.submitted_at).getTime() : Date.now(),
+      }));
+    }
     return loadApps();
   },
 

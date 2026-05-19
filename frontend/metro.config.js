@@ -4,6 +4,28 @@ const path = require('path');
 const { FileStore } = require('metro-cache');
 
 const config = getDefaultConfig(__dirname);
+config.resolver.resolverMainFields = ["react-native", "browser", "module", "main"];
+config.resolver.extraNodeModules = {
+  ...(config.resolver.extraNodeModules || {}),
+  stream: path.resolve(__dirname, "src/lib/streamStub.js"),
+  ws: path.resolve(__dirname, "src/lib/wsStub.js"),
+  zlib: path.resolve(__dirname, "src/lib/zlibStub.js"),
+};
+const defaultResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === "ws") {
+    return { type: "sourceFile", filePath: path.resolve(__dirname, "src/lib/wsStub.js") };
+  }
+  if (moduleName === "stream") {
+    return { type: "sourceFile", filePath: path.resolve(__dirname, "src/lib/streamStub.js") };
+  }
+  if (moduleName === "zlib") {
+    return { type: "sourceFile", filePath: path.resolve(__dirname, "src/lib/zlibStub.js") };
+  }
+  return defaultResolveRequest
+    ? defaultResolveRequest(context, moduleName, platform)
+    : context.resolveRequest(context, moduleName, platform);
+};
 
 // Use a stable on-disk store (shared across web/android)
 const root = process.env.METRO_CACHE_ROOT || path.join(__dirname, '.metro-cache');

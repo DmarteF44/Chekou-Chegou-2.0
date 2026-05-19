@@ -31,7 +31,7 @@ export default function AdminProducts() {
   useEffect(() => {
     const refresh = async () => {
       const session = await authService.getSession();
-      if (!session || session.role !== "admin") {
+      if (!session || (session.role !== "admin" && session.role !== "super_admin")) {
         router.replace("/auth/login");
         return;
       }
