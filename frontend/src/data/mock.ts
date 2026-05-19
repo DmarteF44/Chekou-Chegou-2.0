@@ -35,15 +35,6 @@ export const ESTABLISHMENTS: Establishment[] = [
     description: "Hortifruti, mercearia e bebidas com preço justo.",
   },
   {
-    id: "mercadao",
-    name: "Mercadão da Economia",
-    category: "Mercado",
-    image: "",
-    deliveryTime: "35–50 min",
-    rating: 4.6,
-    description: "Tudo para a sua casa, sempre em promoção.",
-  },
-  {
     id: "farmacia-parceira",
     name: "Farmácia Parceira",
     category: "Farmácia",
@@ -51,6 +42,15 @@ export const ESTABLISHMENTS: Establishment[] = [
     deliveryTime: "20–30 min",
     rating: 4.9,
     description: "Medicamentos, perfumaria e cuidados pessoais.",
+  },
+  {
+    id: "eletronicos-jatai",
+    name: "Eletrônicos Jataí",
+    category: "Eletrônicos",
+    image: "",
+    deliveryTime: "30–50 min",
+    rating: 4.7,
+    description: "Acessórios, carregadores, cabos, fones e itens eletrônicos para o dia a dia.",
   },
 ];
 
@@ -65,11 +65,11 @@ export const PROMOTIONS: Promotion[] = [
   },
   {
     id: "promo-2",
-    title: "Bebidas geladas",
-    storeName: "Mercadão da Economia",
-    description: "Compre 6, pague 5 em refrigerantes selecionados.",
+    title: "Acessórios em destaque",
+    storeName: "Eletrônicos Jataí",
+    description: "Cabos, carregadores e fones com preços especiais para teste.",
     image: "",
-    discount: "6x5",
+    discount: "Teste",
   },
 ];
 
