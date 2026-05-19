@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, TextInput } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
@@ -13,6 +13,7 @@ import { money } from "@/src/components/FinancialBreakdown";
 
 export default function DriverDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [app, setApp] = useState<DriverApplication | null>(null);
   const [stats, setStats] = useState({ done: 0, cancelled: 0, balance: 0, pending: 0 });
@@ -20,6 +21,11 @@ export default function DriverDetail() {
 
   useEffect(() => {
     const refresh = async () => {
+      const session = await authService.getSession();
+      if (!session || session.role !== "admin") {
+        router.replace("/auth/login");
+        return;
+      }
       const u = await authService.getById(id as string);
       setUser(u ?? null);
       setApp((await driverService.getApplication(id as string)) ?? null);
@@ -35,7 +41,7 @@ export default function DriverDetail() {
     };
     refresh();
     return authService.subscribe(refresh);
-  }, [id]);
+  }, [id, router]);
 
   if (!user) {
     return (

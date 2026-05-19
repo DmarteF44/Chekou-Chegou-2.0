@@ -16,8 +16,9 @@ import { authService, User } from "@/src/services/authService";
 import { adminService } from "@/src/services/adminService";
 import { orderService } from "@/src/services/orderService";
 import { catalogService } from "@/src/services/catalogService";
+import { marketingService } from "@/src/services/marketingService";
 import { DRIVER_LEVELS } from "@/src/services/driverService";
-import { Order, ORDER_STATUSES, OrderStatus } from "@/src/data/mock";
+import { Coupon, Order, ORDER_STATUSES, OrderStatus, Promotion } from "@/src/data/mock";
 
 const TABS = ["Resumo", "Pedidos", "Motoristas", "Usuários", "Lojas", "Produtos", "Cupons", "Disputas"] as const;
 type Tab = typeof TABS[number];
@@ -30,6 +31,8 @@ export default function AdminIndex() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [catalogStats, setCatalogStats] = useState({ stores: 0, products: 0 });
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [editingDriver, setEditingDriver] = useState<User | null>(null);
 
   useEffect(() => {
@@ -54,12 +57,19 @@ export default function AdminIndex() {
         catalogService.listProducts(),
       ]);
       setCatalogStats({ stores: stores.length, products: products.length });
+      const [nextCoupons, nextPromotions] = await Promise.all([
+        marketingService.listCoupons(),
+        marketingService.listPromotions(),
+      ]);
+      setCoupons(nextCoupons);
+      setPromotions(nextPromotions);
     };
     refresh();
     const a = authService.subscribe(refresh);
     const b = orderService.subscribe(refresh);
     const c = catalogService.subscribe(refresh);
-    return () => { a(); b(); c(); };
+    const d = marketingService.subscribe(refresh);
+    return () => { a(); b(); c(); d(); };
   }, []);
 
   async function logout() {
@@ -305,9 +315,14 @@ export default function AdminIndex() {
 
         {tab === "Cupons" && (
           <>
-            <Card title="PRIMEIRA10" subtitle="R$10 off no primeiro pedido" badge="Pedido" />
-            <Card title="CHEKOU5" subtitle="R$5 off em qualquer pedido" badge="Pedido" />
-            <Card title="ENTREGAOFF" subtitle="Entrega grátis" badge="Entrega" />
+            <Card title="Cupons locais" subtitle={`${coupons.length} cupons cadastrados no AsyncStorage`} badge="CRUD" />
+            <Card title="Promoções locais" subtitle={`${promotions.length} promoções cadastradas no AsyncStorage`} badge="CRUD" />
+            <Button
+              title="Gerenciar cupons e promoções"
+              onPress={() => router.push("/admin/marketing")}
+              testID="admin-go-marketing"
+              icon={<Ionicons name="pricetags" size={18} color={colors.white} />}
+            />
           </>
         )}
 

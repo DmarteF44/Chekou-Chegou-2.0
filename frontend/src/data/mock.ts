@@ -15,6 +15,7 @@ export type Promotion = {
   description: string;
   image: string;
   discount: string;
+  active?: boolean;
 };
 
 export type Coupon = {
@@ -22,6 +23,7 @@ export type Coupon = {
   description: string;
   discount: number; // R$
   type: "delivery" | "order";
+  active?: boolean;
 };
 
 export const ESTABLISHMENTS: Establishment[] = [
@@ -135,6 +137,8 @@ export type Order = {
   driverId?: string;
   chat: ChatMessage[];
   paid: boolean;
+  complementApprovedAt?: number;
+  complementAmount?: number;
 };
 
 export const DEFAULT_DRIVER_NAME = "João Entregador";

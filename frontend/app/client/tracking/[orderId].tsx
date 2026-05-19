@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import { Alert, View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
+import { Button } from "@/src/components/Button";
+import { DemoNotice } from "@/src/components/DemoNotice";
 import { StatusTracker } from "@/src/components/StatusTracker";
 import { FinancialBreakdown, money } from "@/src/components/FinancialBreakdown";
 import { orderStore } from "@/src/data/orderStore";
@@ -35,10 +37,30 @@ export default function Tracking() {
     );
   }
 
+  const currentOrder = order;
+  const currentLimit = currentOrder.authorizedPurchaseLimit ?? currentOrder.estimatedValue + currentOrder.safetyMargin;
+  const complementAmount = currentOrder.actualValue !== undefined ? Math.max(0, currentOrder.actualValue - currentLimit) : 0;
+
+  async function approveComplement() {
+    if (!currentOrder.actualValue || complementAmount <= 0) {
+      Alert.alert("Sem complemento", "O valor real ainda não ultrapassou o limite autorizado.");
+      return;
+    }
+    await orderStore.update(currentOrder.id, {
+      authorizedPurchaseLimit: currentOrder.actualValue,
+      complementAmount,
+      complementApprovedAt: Date.now(),
+      total: +(currentOrder.total + complementAmount).toFixed(2),
+      status: "Comprando produtos",
+    });
+    Alert.alert("Complemento aprovado", `Complemento local de ${money(complementAmount)} autorizado.`);
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <Header title="Acompanhar Pedido" subtitle={order.storeName} />
       <ScrollView contentContainerStyle={styles.container}>
+        <DemoNotice />
         {/* Confirmation code highlight */}
         <View style={styles.codeBox}>
           <Text style={styles.codeLabel}>Código de confirmação</Text>
@@ -51,6 +73,19 @@ export default function Tracking() {
         {/* Status timeline */}
         <Text style={styles.sectionTitle}>Status</Text>
         <StatusTracker current={order.status} />
+
+        {order.status === "Aguardando complemento do cliente" && (
+          <View style={styles.complementBox}>
+            <Ionicons name="alert-circle" size={20} color={colors.warning} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.complementTitle}>Complemento pendente</Text>
+              <Text style={styles.complementText}>
+                O valor real informado foi {money(order.actualValue ?? 0)}. Autorize {money(complementAmount)} para liberar o andamento.
+              </Text>
+            </View>
+            <Button title="Aprovar" onPress={approveComplement} testID="client-approve-complement" style={styles.complementButton} />
+          </View>
+        )}
 
         {/* Quick actions */}
         <View style={styles.actionsRow}>
@@ -99,6 +134,7 @@ export default function Tracking() {
             { label: "Subtotal produtos", value: order.subtotal ?? order.estimatedValue },
             { label: "Margem de segurança", value: order.safetyMargin },
             { label: "Limite autorizado", value: order.authorizedPurchaseLimit ?? order.estimatedValue + order.safetyMargin },
+            ...(order.complementAmount ? [{ label: "Complemento aprovado", value: order.complementAmount }] : []),
             { label: "Taxa de entrega", value: order.deliveryFee },
             { label: "Taxa da plataforma", value: order.platformFee },
             ...(order.discount > 0 ? [{ label: `Cupom ${order.couponCode}`, value: -order.discount }] : []),
@@ -157,4 +193,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft, padding: spacing.sm, borderRadius: radius.md,
   },
   refundText: { flex: 1, color: colors.primaryDark, fontSize: fontSize.small, lineHeight: 18 },
+  complementBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.warningSoft,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+  },
+  complementTitle: { color: colors.warning, fontWeight: "800", fontSize: fontSize.body },
+  complementText: { color: colors.textSecondary, fontSize: fontSize.small, lineHeight: 18, marginTop: 2 },
+  complementButton: { minHeight: 42, paddingHorizontal: spacing.md },
 });

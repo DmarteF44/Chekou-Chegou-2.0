@@ -4,12 +4,14 @@ import {
   KeyboardAvoidingView, Platform, KeyboardTypeOptions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
 import { DemoNotice } from "@/src/components/DemoNotice";
 import { catalogService, Store, StoreType } from "@/src/services/catalogService";
+import { authService } from "@/src/services/authService";
 
 const TYPES: { id: StoreType; label: string }[] = [
   { id: "mais_pedido", label: "Mais pedido" },
@@ -24,14 +26,22 @@ const EMPTY: Store = {
 };
 
 export default function AdminStores() {
+  const router = useRouter();
   const [stores, setStores] = useState<Store[]>([]);
   const [editing, setEditing] = useState<Store | null>(null);
 
   useEffect(() => {
-    const refresh = async () => setStores(await catalogService.listStores());
+    const refresh = async () => {
+      const session = await authService.getSession();
+      if (!session || session.role !== "admin") {
+        router.replace("/auth/login");
+        return;
+      }
+      setStores(await catalogService.listStores());
+    };
     refresh();
     return catalogService.subscribe(refresh);
-  }, []);
+  }, [router]);
 
   function newOne() {
     setEditing({ ...EMPTY, id: `store_${Date.now()}` });

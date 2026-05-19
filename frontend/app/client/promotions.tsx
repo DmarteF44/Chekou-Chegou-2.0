@@ -1,18 +1,33 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
-import { PROMOTIONS } from "@/src/data/mock";
+import { DemoNotice } from "@/src/components/DemoNotice";
+import { Promotion } from "@/src/data/mock";
+import { marketingService } from "@/src/services/marketingService";
 
 export default function Promotions() {
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
+
+  useEffect(() => {
+    const refresh = async () => setPromotions(await marketingService.listPromotions({ activeOnly: true }));
+    refresh();
+    return marketingService.subscribe(refresh);
+  }, []);
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <Header title="Promoções" />
       <ScrollView contentContainerStyle={styles.container}>
-        {PROMOTIONS.map((p) => (
+        <DemoNotice />
+        {promotions.length === 0 ? (
+          <View style={styles.empty}>
+            <Text style={styles.desc}>Nenhuma promoção ativa no momento.</Text>
+          </View>
+        ) : promotions.map((p) => (
           <View key={p.id} style={styles.card} testID={`promotion-${p.id}`}>
-            {p.image ? <Image source={{ uri: p.image }} style={styles.img} /> : <View style={styles.imgFallback} />}
+            {p.image?.trim() ? <Image source={{ uri: p.image.trim() }} style={styles.img} /> : <View style={styles.imgFallback} />}
             <View style={styles.badge}><Text style={styles.badgeText}>{p.discount}</Text></View>
             <View style={styles.body}>
               <Text style={styles.title}>{p.title}</Text>
@@ -44,4 +59,11 @@ const styles = StyleSheet.create({
   title: { fontSize: fontSize.h4, fontWeight: "700", color: colors.textPrimary },
   store: { color: colors.primary, fontWeight: "600", fontSize: fontSize.small },
   desc: { color: colors.textSecondary, fontSize: fontSize.body, marginTop: 2 },
+  empty: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
 });

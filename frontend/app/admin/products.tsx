@@ -4,27 +4,35 @@ import {
   KeyboardAvoidingView, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
 import { DemoNotice } from "@/src/components/DemoNotice";
 import { catalogService, Product, Store, PRODUCT_CATEGORIES, ProductCategory } from "@/src/services/catalogService";
+import { authService } from "@/src/services/authService";
 import { money } from "@/src/components/FinancialBreakdown";
 
 export default function AdminProducts() {
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [editing, setEditing] = useState<Product | null>(null);
 
   useEffect(() => {
     const refresh = async () => {
+      const session = await authService.getSession();
+      if (!session || session.role !== "admin") {
+        router.replace("/auth/login");
+        return;
+      }
       setProducts(await catalogService.listProducts());
       setStores(await catalogService.listStores());
     };
     refresh();
     return catalogService.subscribe(refresh);
-  }, []);
+  }, [router]);
 
   function newOne() {
     setEditing({

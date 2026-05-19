@@ -4,12 +4,13 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
-import { PROMOTIONS, Order } from "@/src/data/mock";
+import { Order, Promotion } from "@/src/data/mock";
 import { orderStore } from "@/src/data/orderStore";
 import { StatusPill } from "@/src/components/StatusPill";
 import { DemoNotice } from "@/src/components/DemoNotice";
 import { authService, User } from "@/src/services/authService";
 import { catalogService, Store } from "@/src/services/catalogService";
+import { marketingService } from "@/src/services/marketingService";
 
 function iconForStore(category: string): keyof typeof Ionicons.glyphMap {
   const normalized = category.toLowerCase();
@@ -23,6 +24,7 @@ export default function ClientHome() {
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [me, setMe] = useState<User | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
 
   useEffect(() => {
     const refresh = async () => {
@@ -31,12 +33,14 @@ export default function ClientHome() {
       setActiveOrders(all.filter((o) => o.clientId === session?.id && o.status !== "Entregue" && o.status !== "Cancelado"));
       setMe(session);
       setStores(await catalogService.listStores({ activeOnly: true }));
+      setPromotions(await marketingService.listPromotions({ activeOnly: true }));
     };
     refresh();
     const a = orderStore.subscribe(refresh);
     const b = catalogService.subscribe(refresh);
     const c = authService.subscribe(refresh);
-    return () => { a(); b(); c(); };
+    const d = marketingService.subscribe(refresh);
+    return () => { a(); b(); c(); d(); };
   }, []);
 
   async function logout() {
@@ -94,7 +98,7 @@ export default function ClientHome() {
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
-          data={PROMOTIONS}
+          data={promotions}
           keyExtractor={(p) => p.id}
           contentContainerStyle={{ paddingHorizontal: spacing.md, gap: spacing.sm }}
           renderItem={({ item }) => (
@@ -103,7 +107,7 @@ export default function ClientHome() {
               onPress={() => router.push("/client/promotions")}
               testID={`promo-card-${item.id}`}
             >
-              {item.image ? <Image source={{ uri: item.image }} style={styles.promoImg} /> : <View style={styles.promoImgFallback} />}
+              {item.image?.trim() ? <Image source={{ uri: item.image.trim() }} style={styles.promoImg} /> : <View style={styles.promoImgFallback} />}
               <View style={styles.discountBadge}>
                 <Text style={styles.discountText}>{item.discount}</Text>
               </View>

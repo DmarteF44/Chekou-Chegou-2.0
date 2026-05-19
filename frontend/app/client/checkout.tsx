@@ -8,10 +8,11 @@ import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
 import { DemoNotice } from "@/src/components/DemoNotice";
 import { FinancialBreakdown, money } from "@/src/components/FinancialBreakdown";
-import { COUPONS, Order, OrderItem } from "@/src/data/mock";
+import { Order, OrderItem } from "@/src/data/mock";
 import { orderStore, generateCode, generateId } from "@/src/data/orderStore";
 import { paymentService } from "@/src/services/paymentService";
 import { authService } from "@/src/services/authService";
+import { marketingService } from "@/src/services/marketingService";
 
 const PLATFORM_FEE_RATE = 0.07;
 
@@ -59,9 +60,9 @@ export default function Checkout() {
     [authorizedPurchaseLimit, deliveryFee, platformFee, discount]
   );
 
-  function applyCoupon() {
+  async function applyCoupon() {
     const code = couponInput.trim().toUpperCase();
-    const found = COUPONS.find((c) => c.code === code);
+    const found = await marketingService.getCoupon(code);
     if (!found) {
       Alert.alert("Cupom inválido", "Esse cupom não existe no modo local.");
       return;
