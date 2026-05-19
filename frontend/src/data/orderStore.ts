@@ -44,8 +44,9 @@ export const orderStore = {
     return list.find((o) => o.id === id);
   },
 
-  async getByClient(): Promise<Order[]> {
-    return this.getAll();
+  async getByClient(clientId?: string): Promise<Order[]> {
+    const all = await this.getAll();
+    return clientId ? all.filter((o) => o.clientId === clientId) : all;
   },
 
   async getAvailable(): Promise<Order[]> {

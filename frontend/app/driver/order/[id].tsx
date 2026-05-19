@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,6 +8,7 @@ import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
 import { StatusTracker } from "@/src/components/StatusTracker";
 import { FinancialBreakdown, money } from "@/src/components/FinancialBreakdown";
+import { DemoNotice } from "@/src/components/DemoNotice";
 import { orderStore } from "@/src/data/orderStore";
 import { Order, ORDER_STATUSES, OrderStatus } from "@/src/data/mock";
 import { authService, User } from "@/src/services/authService";
@@ -121,7 +122,9 @@ export default function DriverOrder() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <Header title="Pedido" subtitle={order.storeName} />
-      <ScrollView contentContainerStyle={styles.container}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <DemoNotice />
         {/* Items */}
         <View style={styles.card}>
           <Text style={styles.h}>Lista do cliente</Text>
@@ -246,6 +249,7 @@ export default function DriverOrder() {
           </View>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

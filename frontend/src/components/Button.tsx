@@ -44,7 +44,7 @@ export function Button({
       ) : (
         <View style={styles.row}>
           {icon}
-          <Text style={[styles.baseText, styleByVariant.text]}>{title}</Text>
+          <Text style={[styles.baseText, styleByVariant.text]} numberOfLines={2}>{title}</Text>
         </View>
       )}
     </TouchableOpacity>
@@ -59,8 +59,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
   },
-  row: { flexDirection: "row", alignItems: "center", gap: 8 },
-  baseText: { fontSize: fontSize.bodyLarge, fontWeight: "700" },
+  row: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, flexShrink: 1 },
+  baseText: { fontSize: fontSize.bodyLarge, fontWeight: "700", textAlign: "center", flexShrink: 1 },
   primary: { backgroundColor: colors.primary },
   primaryText: { color: colors.white },
   secondary: {

@@ -8,6 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
+import { DemoNotice } from "@/src/components/DemoNotice";
 import { authService } from "@/src/services/authService";
 
 export default function Signup() {
@@ -38,6 +39,7 @@ export default function Signup() {
       <Header title="Criar conta" />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <DemoNotice />
           <Field label="Nome completo" value={name} onChange={setName} testID="signup-name" />
           <Field label="Telefone / WhatsApp" value={phone} onChange={setPhone} keyboardType="phone-pad" testID="signup-phone" />
           <Field label="E-mail" value={email} onChange={setEmail} keyboardType="email-address" testID="signup-email" />

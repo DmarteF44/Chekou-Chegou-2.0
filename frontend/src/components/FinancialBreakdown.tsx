@@ -3,7 +3,8 @@ import { View, Text, StyleSheet } from "react-native";
 import { colors, radius, spacing, fontSize } from "@/src/theme/colors";
 
 export function money(v: number) {
-  return `R$ ${v.toFixed(2).replace(".", ",")}`;
+  const sign = v < 0 ? "-" : "";
+  return `${sign}R$ ${Math.abs(v).toFixed(2).replace(".", ",")}`;
 }
 
 type Row = { label: string; value: number; hint?: string };
@@ -27,7 +28,7 @@ export function FinancialBreakdown({
             <Text style={styles.label}>{r.label}</Text>
             {r.hint ? <Text style={styles.hint}>{r.hint}</Text> : null}
           </View>
-          <Text style={styles.value}>{money(r.value)}</Text>
+          <Text style={[styles.value, r.value < 0 && styles.discountValue]}>{money(r.value)}</Text>
         </View>
       ))}
       <View style={styles.totalRow}>
@@ -64,7 +65,10 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: fontSize.body,
     fontWeight: "600",
+    textAlign: "right",
+    flexShrink: 0,
   },
+  discountValue: { color: colors.primary },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",

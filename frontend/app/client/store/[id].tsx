@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
+import { DemoNotice } from "@/src/components/DemoNotice";
 import { money } from "@/src/components/FinancialBreakdown";
 import { catalogService, Product, Store } from "@/src/services/catalogService";
 import { OrderItem } from "@/src/data/mock";
@@ -54,6 +55,7 @@ export default function StoreOrder() {
   const hasCustom = customText.trim().length > 0 && customSubtotal > 0;
   const valid = !!store && (selectedItems.length > 0 || hasCustom);
   const isPharmacy = store?.category?.toLowerCase().includes("farmácia") || store?.id === "farmacia-parceira";
+  const storeIcon: keyof typeof Ionicons.glyphMap = store?.category?.toLowerCase().includes("eletr") ? "hardware-chip" : isPharmacy ? "medical" : "storefront";
 
   function changeQty(productId: string, delta: number) {
     setQuantities((current) => ({
@@ -102,11 +104,12 @@ export default function StoreOrder() {
       <Header title="Criar Pedido" subtitle={store.name} />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+          <DemoNotice />
           <View style={styles.storeHeader}>
-            {store.image ? (
-              <Image source={{ uri: store.image }} style={styles.storeImg} />
+            {store.image?.trim() ? (
+              <Image source={{ uri: store.image.trim() }} style={styles.storeImg} />
             ) : (
-              <View style={styles.storeImgFallback}><Ionicons name="storefront" size={24} color={colors.primary} /></View>
+              <View style={styles.storeImgFallback}><Ionicons name={storeIcon} size={24} color={colors.primary} /></View>
             )}
             <View style={{ flex: 1 }}>
               <Text style={styles.storeName}>{store.name}</Text>
@@ -147,6 +150,7 @@ export default function StoreOrder() {
                   </View>
                 </TouchableOpacity>
                 <View style={styles.qtyRow}>
+                  <Text style={styles.lineTotal}>{qty > 0 ? money(qty * unitPrice) : "Toque para adicionar"}</Text>
                   <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQty(p.id, -1)} testID={`product-minus-${p.id}`}>
                     <Ionicons name="remove" size={18} color={colors.primary} />
                   </TouchableOpacity>
@@ -196,13 +200,15 @@ export default function StoreOrder() {
           />
 
           <View style={styles.summary}>
-            <Text style={styles.summaryLabel}>Subtotal produtos</Text>
-            <Text style={styles.summaryValue}>{money(cartSubtotal)}</Text>
+            <View style={styles.summaryLine}>
+              <Text style={styles.summaryLabel}>Subtotal produtos</Text>
+              <Text style={styles.summaryValue}>{money(cartSubtotal)}</Text>
+            </View>
             {customSubtotal > 0 ? (
-              <>
+              <View style={styles.summaryLine}>
                 <Text style={styles.summaryLabel}>Subtotal personalizado</Text>
                 <Text style={styles.summaryValue}>{money(customSubtotal)}</Text>
-              </>
+              </View>
             ) : null}
           </View>
 
@@ -247,6 +253,7 @@ const styles = StyleSheet.create({
   check: { width: 24, height: 24, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   checkOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   qtyRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: spacing.sm },
+  lineTotal: { flex: 1, color: colors.textSecondary, fontSize: fontSize.small, fontWeight: "700" },
   qtyBtn: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.primary, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   qty: { minWidth: 24, textAlign: "center", color: colors.textPrimary, fontWeight: "800", fontSize: fontSize.bodyLarge },
   input: {
@@ -257,7 +264,8 @@ const styles = StyleSheet.create({
   textareaSm: { minHeight: 80, textAlignVertical: "top" },
   currencyRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   currencyPrefix: { fontSize: fontSize.h4, fontWeight: "700", color: colors.textSecondary },
-  summary: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.borderLight, gap: 4 },
+  summary: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.borderLight, gap: 8 },
+  summaryLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   summaryLabel: { color: colors.textSecondary, fontSize: fontSize.small, fontWeight: "700" },
   summaryValue: { color: colors.primary, fontSize: fontSize.h4, fontWeight: "800" },
   hint: { fontSize: fontSize.small, color: colors.textTertiary, marginTop: 2 },

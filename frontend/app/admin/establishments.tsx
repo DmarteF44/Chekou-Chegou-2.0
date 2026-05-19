@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
+import { DemoNotice } from "@/src/components/DemoNotice";
 import { catalogService, Store, StoreType } from "@/src/services/catalogService";
 
 const TYPES: { id: StoreType; label: string }[] = [
@@ -42,7 +43,15 @@ export default function AdminStores() {
       Alert.alert("Nome inválido", "Informe o nome do estabelecimento.");
       return;
     }
-    await catalogService.upsertStore(editing);
+    await catalogService.upsertStore({
+      ...editing,
+      name: editing.name.trim(),
+      category: editing.category.trim(),
+      description: editing.description.trim(),
+      image: editing.image.trim(),
+      phone: editing.phone?.trim(),
+      notes: editing.notes?.trim(),
+    });
     setEditing(null);
   }
 
@@ -64,6 +73,7 @@ export default function AdminStores() {
         }
       />
       <ScrollView contentContainerStyle={styles.container}>
+        <DemoNotice />
         <Text style={styles.notice}>
           O Chekou Ganhou é uma plataforma independente de compra assistida e entrega.
           Estabelecimentos exibidos como mais pedidos não representam parceria oficial, salvo indicação expressa.

@@ -8,6 +8,7 @@ import { orderStore } from "@/src/data/orderStore";
 import { Order } from "@/src/data/mock";
 import { money } from "@/src/components/FinancialBreakdown";
 import { StatusPill } from "@/src/components/StatusPill";
+import { DemoNotice } from "@/src/components/DemoNotice";
 import { authService, User } from "@/src/services/authService";
 import { DRIVER_LEVELS, DriverLevel } from "@/src/services/driverService";
 
@@ -67,6 +68,9 @@ export default function DriverHome() {
           >
             <Ionicons name="log-out-outline" size={20} color={colors.primary} />
           </TouchableOpacity>
+        </View>
+        <View style={styles.noticeWrap}>
+          <DemoNotice />
         </View>
 
         {/* Level strip */}
@@ -183,6 +187,7 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft,
     alignItems: "center", justifyContent: "center",
   },
+  noticeWrap: { paddingHorizontal: spacing.md, marginBottom: spacing.sm },
   earningCard: {
     marginHorizontal: spacing.md, padding: spacing.lg, borderRadius: radius.xl,
     backgroundColor: colors.primary, gap: 4,

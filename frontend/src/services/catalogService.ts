@@ -36,7 +36,7 @@ export type Product = {
 const STORES_KEY = "chekou_stores_v1";
 const PRODUCTS_KEY = "chekou_products_v1";
 const SEED_KEY = "chekou_catalog_seed_v1";
-const SEED_VERSION = "3";
+const SEED_VERSION = "4";
 const DEPRECATED_STORE_IDS = ["mercad" + "ao"];
 
 const SEED_PRODUCTS: Product[] = [
@@ -101,8 +101,8 @@ async function ensureSeed() {
   products.forEach((p) => {
     if (DEPRECATED_STORE_IDS.includes(p.storeId)) productsById.delete(p.id);
   });
-  seedStores.forEach((s) => storesById.set(s.id, storesById.has(s.id) ? { ...s, ...storesById.get(s.id)! } : s));
-  SEED_PRODUCTS.forEach((p) => productsById.set(p.id, productsById.has(p.id) ? { ...p, ...productsById.get(p.id)! } : p));
+  seedStores.forEach((s) => storesById.set(s.id, storesById.has(s.id) ? { ...storesById.get(s.id)!, ...s } : s));
+  SEED_PRODUCTS.forEach((p) => productsById.set(p.id, productsById.has(p.id) ? { ...productsById.get(p.id)!, ...p } : p));
   await storage.setItem(STORES_KEY, JSON.stringify(Array.from(storesById.values())));
   await storage.setItem(PRODUCTS_KEY, JSON.stringify(Array.from(productsById.values())));
   await storage.setItem(SEED_KEY, SEED_VERSION);

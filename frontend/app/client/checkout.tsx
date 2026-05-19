@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TextInput, Alert } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
+import { DemoNotice } from "@/src/components/DemoNotice";
 import { FinancialBreakdown, money } from "@/src/components/FinancialBreakdown";
 import { COUPONS, Order, OrderItem } from "@/src/data/mock";
 import { orderStore, generateCode, generateId } from "@/src/data/orderStore";
@@ -125,7 +126,9 @@ export default function Checkout() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <Header title="Revisão do Pedido" />
-      <ScrollView contentContainerStyle={styles.container}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <DemoNotice />
         <View style={styles.card}>
           <Text style={styles.storeName}>{p.storeName}</Text>
           <Text style={styles.itemsTitle}>Itens selecionados</Text>
@@ -185,6 +188,7 @@ export default function Checkout() {
           icon={<Ionicons name="card" size={20} color={colors.white} />}
         />
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

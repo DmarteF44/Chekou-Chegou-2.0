@@ -7,8 +7,16 @@ import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { PROMOTIONS, Order } from "@/src/data/mock";
 import { orderStore } from "@/src/data/orderStore";
 import { StatusPill } from "@/src/components/StatusPill";
+import { DemoNotice } from "@/src/components/DemoNotice";
 import { authService, User } from "@/src/services/authService";
 import { catalogService, Store } from "@/src/services/catalogService";
+
+function iconForStore(category: string): keyof typeof Ionicons.glyphMap {
+  const normalized = category.toLowerCase();
+  if (normalized.includes("farm")) return "medical";
+  if (normalized.includes("eletr")) return "hardware-chip";
+  return "storefront";
+}
 
 export default function ClientHome() {
   const router = useRouter();
@@ -18,9 +26,10 @@ export default function ClientHome() {
 
   useEffect(() => {
     const refresh = async () => {
+      const session = await authService.getSession();
       const all = await orderStore.getAll();
-      setActiveOrders(all.filter((o) => o.status !== "Entregue"));
-      setMe(await authService.getSession());
+      setActiveOrders(all.filter((o) => o.clientId === session?.id && o.status !== "Entregue" && o.status !== "Cancelado"));
+      setMe(session);
       setStores(await catalogService.listStores({ activeOnly: true }));
     };
     refresh();
@@ -54,6 +63,9 @@ export default function ClientHome() {
           >
             <Ionicons name="log-out-outline" size={20} color={colors.primary} />
           </TouchableOpacity>
+        </View>
+        <View style={styles.noticeWrap}>
+          <DemoNotice />
         </View>
 
         {/* Active order banner */}
@@ -132,21 +144,24 @@ export default function ClientHome() {
         {/* Establishments */}
         <Text style={styles.sectionTitle}>Estabelecimentos</Text>
         <View style={{ paddingHorizontal: spacing.md, gap: spacing.sm }}>
-          {stores.map((e) => (
+          {stores.map((e) => {
+            const image = e.image?.trim();
+            const icon = iconForStore(e.category);
+            return (
             <TouchableOpacity
               key={e.id}
               style={styles.storeCard}
               onPress={() => router.push(`/client/store/${e.id}`)}
               testID={`store-card-${e.id}`}
             >
-              {e.image ? (
-                <Image source={{ uri: e.image }} style={styles.storeImg} />
+              {image ? (
+                <Image source={{ uri: image }} style={styles.storeImg} />
               ) : (
-                <View style={styles.storeImgFallback}><Ionicons name="storefront" size={24} color={colors.primary} /></View>
+                <View style={styles.storeImgFallback}><Ionicons name={icon} size={24} color={colors.primary} /></View>
               )}
               <View style={{ flex: 1 }}>
-                <Text style={styles.storeName}>{e.name}</Text>
-                <Text style={styles.storeCat}>{e.category}</Text>
+                <Text style={styles.storeName} numberOfLines={1}>{e.name}</Text>
+                <Text style={styles.storeCat} numberOfLines={2}>{e.description}</Text>
                 <View style={styles.storeMeta}>
                   <View style={styles.metaItem}>
                     <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
@@ -160,7 +175,7 @@ export default function ClientHome() {
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
             </TouchableOpacity>
-          ))}
+          );})}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -191,6 +206,7 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft,
     alignItems: "center", justifyContent: "center",
   },
+  noticeWrap: { paddingHorizontal: spacing.md, marginBottom: spacing.sm },
   activeBanner: {
     marginHorizontal: spacing.md, padding: spacing.md, borderRadius: radius.lg,
     backgroundColor: colors.primary, flexDirection: "row", alignItems: "center",
@@ -236,7 +252,7 @@ const styles = StyleSheet.create({
   quickLabel: { fontSize: fontSize.small, color: colors.textSecondary, fontWeight: "600" },
 
   storeCard: {
-    backgroundColor: colors.surface, padding: spacing.sm, borderRadius: radius.lg,
+    backgroundColor: colors.surface, padding: spacing.md, borderRadius: radius.lg,
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
     borderWidth: 1, borderColor: colors.borderLight,
   },

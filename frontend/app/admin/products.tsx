@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
+import { DemoNotice } from "@/src/components/DemoNotice";
 import { catalogService, Product, Store, PRODUCT_CATEGORIES, ProductCategory } from "@/src/services/catalogService";
 import { money } from "@/src/components/FinancialBreakdown";
 
@@ -39,7 +40,12 @@ export default function AdminProducts() {
       Alert.alert("Inválido", "Informe nome e preço estimado.");
       return;
     }
-    await catalogService.upsertProduct(editing);
+    await catalogService.upsertProduct({
+      ...editing,
+      name: editing.name.trim(),
+      imageUrl: editing.imageUrl?.trim() || undefined,
+      notes: editing.notes?.trim(),
+    });
     setEditing(null);
   }
 
@@ -61,6 +67,7 @@ export default function AdminProducts() {
         }
       />
       <ScrollView contentContainerStyle={styles.container}>
+        <DemoNotice />
         <Text style={styles.intro}>
           Catálogo opcional para produtos comuns e promoções. O pedido manual continua disponível.
         </Text>

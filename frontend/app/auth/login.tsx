@@ -8,6 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Button } from "@/src/components/Button";
+import { DemoNotice } from "@/src/components/DemoNotice";
 import { authService } from "@/src/services/authService";
 
 export default function Login() {
@@ -43,9 +44,11 @@ export default function Login() {
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.logo}><Text style={styles.logoText}>CG</Text></View>
           <Text style={styles.brand}>Chekou Ganhou</Text>
+          <DemoNotice compact />
           <Text style={styles.tagline}>Peça de mercados, farmácias e lojas locais sem sair de casa.</Text>
 
           <View style={styles.form}>
+            <Text style={styles.formTitle}>Acesso local</Text>
             <Text style={styles.label}>E-mail</Text>
             <TextInput
               value={email} onChangeText={setEmail}
@@ -102,7 +105,11 @@ const styles = StyleSheet.create({
   logoText: { color: colors.white, fontWeight: "800", fontSize: 28 },
   brand: { fontSize: 28, fontWeight: "800", color: colors.textPrimary, textAlign: "center", marginTop: spacing.sm },
   tagline: { color: colors.textSecondary, textAlign: "center", marginBottom: spacing.md },
-  form: { gap: spacing.sm },
+  form: {
+    gap: spacing.sm, backgroundColor: colors.background, borderWidth: 1,
+    borderColor: colors.borderLight, borderRadius: radius.lg, padding: spacing.md,
+  },
+  formTitle: { color: colors.textPrimary, fontWeight: "800", fontSize: fontSize.bodyLarge },
   label: { color: colors.textSecondary, fontWeight: "600", fontSize: fontSize.small, marginTop: spacing.sm },
   input: {
     borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,

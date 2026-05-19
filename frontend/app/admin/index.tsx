@@ -10,10 +10,12 @@ import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
 import { StatusPill } from "@/src/components/StatusPill";
+import { DemoNotice } from "@/src/components/DemoNotice";
 import { money } from "@/src/components/FinancialBreakdown";
 import { authService, User } from "@/src/services/authService";
 import { adminService } from "@/src/services/adminService";
 import { orderService } from "@/src/services/orderService";
+import { catalogService } from "@/src/services/catalogService";
 import { DRIVER_LEVELS } from "@/src/services/driverService";
 import { Order, ORDER_STATUSES, OrderStatus } from "@/src/data/mock";
 
@@ -27,6 +29,7 @@ export default function AdminIndex() {
   const [users, setUsers] = useState<User[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [stats, setStats] = useState<any>(null);
+  const [catalogStats, setCatalogStats] = useState({ stores: 0, products: 0 });
   const [editingDriver, setEditingDriver] = useState<User | null>(null);
 
   useEffect(() => {
@@ -46,11 +49,17 @@ export default function AdminIndex() {
       setUsers(await authService.getAllUsers());
       setOrders(await orderService.list());
       setStats(await adminService.stats());
+      const [stores, products] = await Promise.all([
+        catalogService.listStores(),
+        catalogService.listProducts(),
+      ]);
+      setCatalogStats({ stores: stores.length, products: products.length });
     };
     refresh();
     const a = authService.subscribe(refresh);
     const b = orderService.subscribe(refresh);
-    return () => { a(); b(); };
+    const c = catalogService.subscribe(refresh);
+    return () => { a(); b(); c(); };
   }, []);
 
   async function logout() {
@@ -159,6 +168,7 @@ export default function AdminIndex() {
       </ScrollView>
 
       <ScrollView contentContainerStyle={styles.body}>
+        <DemoNotice />
         {tab === "Resumo" && stats && (
           <>
             <View style={styles.statsGrid}>
@@ -168,6 +178,8 @@ export default function AdminIndex() {
               <Stat label="Em andamento" value={stats.ordersInProgress} color={colors.info} />
               <Stat label="Concluídos" value={stats.ordersDone} color={colors.primary} />
               <Stat label="GMV" value={`R$ ${stats.gmv.toFixed(0)}`} color={colors.primary} />
+              <Stat label="Lojas" value={catalogStats.stores} color={colors.info} />
+              <Stat label="Produtos" value={catalogStats.products} color={colors.info} />
             </View>
           </>
         )}
@@ -269,6 +281,7 @@ export default function AdminIndex() {
               Estabelecimentos exibidos como mais pedidos não representam parceria oficial,
               salvo indicação expressa.
             </Text>
+            <Card title="Catálogo local" subtitle={`${catalogStats.stores} estabelecimentos salvos no AsyncStorage`} badge="Offline" />
             <Button
               title="Gerenciar estabelecimentos"
               onPress={() => router.push("/admin/establishments")}
@@ -279,12 +292,15 @@ export default function AdminIndex() {
         )}
 
         {tab === "Produtos" && (
-          <Button
-            title="Gerenciar produtos"
-            onPress={() => router.push("/admin/products")}
-            testID="admin-go-products"
-            icon={<Ionicons name="cube" size={18} color={colors.white} />}
-          />
+          <>
+            <Card title="Produtos locais" subtitle={`${catalogStats.products} itens disponíveis para seleção no cliente`} badge="AsyncStorage" />
+            <Button
+              title="Gerenciar produtos"
+              onPress={() => router.push("/admin/products")}
+              testID="admin-go-products"
+              icon={<Ionicons name="cube" size={18} color={colors.white} />}
+            />
+          </>
         )}
 
         {tab === "Cupons" && (

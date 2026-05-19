@@ -3,6 +3,7 @@ import { View, StyleSheet, ActivityIndicator, Text } from "react-native";
 import { useRouter } from "expo-router";
 import { colors, fontSize, spacing } from "@/src/theme/colors";
 import { authService } from "@/src/services/authService";
+import { DemoNotice } from "@/src/components/DemoNotice";
 
 // Auth gate / splash router.
 // Decides where to land based on session state and user role/driverStatus.
@@ -36,6 +37,9 @@ export default function Index() {
         <Text style={styles.logoText}>CG</Text>
       </View>
       <Text style={styles.brand}>Chekou Ganhou</Text>
+      <View style={{ marginTop: spacing.sm }}>
+        <DemoNotice compact />
+      </View>
       <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.lg }} />
     </View>
   );
