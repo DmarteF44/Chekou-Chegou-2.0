@@ -76,7 +76,16 @@ export default function Tracking() {
         <Text style={styles.sectionTitle}>Detalhes do Pedido</Text>
         <View style={styles.card}>
           <Text style={styles.itemsTitle}>Itens</Text>
-          <Text style={styles.itemsText}>{order.items}</Text>
+          {(order.orderItems ?? []).length > 0 ? (
+            order.orderItems.map((item, index) => (
+              <View key={`${item.name}-${index}`} style={styles.itemRow}>
+                <Text style={styles.itemsText}>{item.quantity}x {item.name}</Text>
+                <Text style={styles.itemPrice}>{money(item.total)}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.itemsText}>{order.items}</Text>
+          )}
           {order.notes ? (
             <>
               <Text style={styles.itemsTitle}>Observações</Text>
@@ -87,8 +96,9 @@ export default function Tracking() {
 
         <FinancialBreakdown
           rows={[
-            { label: "Valor estimado", value: order.estimatedValue },
+            { label: "Subtotal produtos", value: order.subtotal ?? order.estimatedValue },
             { label: "Margem de segurança", value: order.safetyMargin },
+            { label: "Limite autorizado", value: order.authorizedPurchaseLimit ?? order.estimatedValue + order.safetyMargin },
             { label: "Taxa de entrega", value: order.deliveryFee },
             { label: "Taxa da plataforma", value: order.platformFee },
             ...(order.discount > 0 ? [{ label: `Cupom ${order.couponCode}`, value: -order.discount }] : []),
@@ -140,6 +150,8 @@ const styles = StyleSheet.create({
   },
   itemsTitle: { fontSize: fontSize.small, fontWeight: "700", color: colors.textSecondary, marginTop: spacing.xs },
   itemsText: { fontSize: fontSize.body, color: colors.textPrimary, lineHeight: 20 },
+  itemRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
+  itemPrice: { color: colors.primary, fontWeight: "800" },
   refundBox: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
     backgroundColor: colors.primarySoft, padding: spacing.sm, borderRadius: radius.md,

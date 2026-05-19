@@ -1,15 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { orderStore } from "@/src/data/orderStore";
-import { Order, DEFAULT_DRIVER_NAME } from "@/src/data/mock";
+import { Order } from "@/src/data/mock";
 import { money } from "@/src/components/FinancialBreakdown";
 import { StatusPill } from "@/src/components/StatusPill";
 import { authService, User } from "@/src/services/authService";
-import { driverService, DRIVER_LEVELS, DriverLevel } from "@/src/services/driverService";
+import { DRIVER_LEVELS, DriverLevel } from "@/src/services/driverService";
 
 export default function DriverHome() {
   const router = useRouter();

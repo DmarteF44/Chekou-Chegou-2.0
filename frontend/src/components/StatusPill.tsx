@@ -8,8 +8,10 @@ const COLOR_MAP: Record<OrderStatus, { bg: string; fg: string }> = {
   "Entregador aceitou": { bg: colors.infoSoft, fg: colors.info },
   "Indo ao estabelecimento": { bg: colors.infoSoft, fg: colors.info },
   "Comprando produtos": { bg: colors.primarySoft, fg: colors.primaryDark },
+  "Aguardando complemento do cliente": { bg: colors.warningSoft, fg: colors.warning },
   "A caminho do cliente": { bg: colors.primarySoft, fg: colors.primaryDark },
   Entregue: { bg: colors.primarySoft, fg: colors.success },
+  Cancelado: { bg: colors.errorSoft, fg: colors.error },
 };
 
 export function StatusPill({ status, testID }: { status: OrderStatus; testID?: string }) {

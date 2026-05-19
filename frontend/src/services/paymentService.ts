@@ -1,11 +1,4 @@
-// paymentService — Mercado Pago integration scaffolding.
-//
-// IMPORTANT: The Mercado Pago Access Token MUST NEVER live in the mobile app.
-// In production, all calls below should be implemented in a secure backend
-// (e.g. serverless function or our Supabase Edge Function) which keeps the
-// access token in environment variables and exposes endpoints over HTTPS.
-//
-// This module currently simulates the entire flow with local state.
+// paymentService — fully local payment simulation for the offline MVP.
 
 import { Order } from "@/src/data/mock";
 
@@ -26,7 +19,6 @@ export type Split = {
 
 export const paymentService = {
   async createPaymentIntent(order: Order): Promise<PaymentIntent> {
-    // FUTURE: POST /payments  -> Mercado Pago Preference / Payment Intent
     return {
       id: `pi_${Date.now()}`,
       orderId: order.id,
@@ -37,7 +29,6 @@ export const paymentService = {
   },
 
   async markPaymentAsApproved(intent: PaymentIntent): Promise<PaymentIntent> {
-    // FUTURE: webhook from Mercado Pago updates status. Here we simulate.
     return { ...intent, status: "approved" };
   },
 
@@ -46,11 +37,11 @@ export const paymentService = {
   },
 
   async refundDifference(_intent: PaymentIntent, _amount: number): Promise<void> {
-    // FUTURE: call MP /refunds with the unused safety margin.
+    return;
   },
 
   async releaseDriverPayment(_intent: PaymentIntent, _driverId: string): Promise<void> {
-    // FUTURE: trigger payout to driver Pix key once delivery is confirmed via code.
+    return;
   },
 
   calculateSplit(order: Order): Split {

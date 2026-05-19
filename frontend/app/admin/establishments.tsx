@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, Modal,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, KeyboardTypeOptions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -66,7 +66,7 @@ export default function AdminStores() {
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.notice}>
           O Chekou Ganhou é uma plataforma independente de compra assistida e entrega.
-          Estabelecimentos exibidos como "mais pedidos" não representam parceria oficial, salvo indicação expressa.
+          Estabelecimentos exibidos como mais pedidos não representam parceria oficial, salvo indicação expressa.
         </Text>
         {stores.map((s) => (
           <View key={s.id} style={styles.card}>
@@ -146,7 +146,14 @@ export default function AdminStores() {
 
 function Field({
   label, value, onChange, keyboardType, multiline, testID,
-}: any) {
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  keyboardType?: KeyboardTypeOptions;
+  multiline?: boolean;
+  testID?: string;
+}) {
   return (
     <View style={{ gap: 4 }}>
       <Text style={styles.label}>{label}</Text>

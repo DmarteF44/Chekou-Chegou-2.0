@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, StyleSheet, ActivityIndicator, Image, Text } from "react-native";
+import { View, StyleSheet, ActivityIndicator, Text } from "react-native";
 import { useRouter } from "expo-router";
 import { colors, fontSize, spacing } from "@/src/theme/colors";
 import { authService } from "@/src/services/authService";
@@ -21,25 +21,12 @@ export default function Index() {
         return;
       }
       if (u.role === "driver") {
-        if (u.driverStatus === "approved") {
-          router.replace("/driver/home");
-        } else if (u.driverStatus === "blocked") {
-          router.replace("/driver/blocked");
-        } else if (u.driverStatus === "pending") {
-          router.replace("/driver/pending");
-        } else {
-          router.replace("/driver/pending");
-        }
+        if (u.driverStatus === "approved") router.replace("/driver/home");
+        else if (u.driverStatus === "blocked") router.replace("/driver/blocked");
+        else router.replace("/driver/pending");
         return;
       }
-      // role === "client"
-      if (u.driverStatus === "pending") {
-        router.replace("/driver/pending");
-      } else if (u.driverStatus === "blocked") {
-        router.replace("/driver/blocked");
-      } else {
-        router.replace("/client/home");
-      }
+      router.replace("/client/home");
     })();
   }, [router]);
 

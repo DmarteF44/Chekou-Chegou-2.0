@@ -1,6 +1,4 @@
-// authService — currently backed by AsyncStorage.
-// FUTURE: replace internal store calls with Supabase auth (signIn/signUp/session).
-// All public function signatures should remain the same.
+// authService — local/offline authentication backed by AsyncStorage.
 import { storage } from "@/src/utils/storage";
 
 export type Role = "client" | "driver" | "admin";
@@ -15,14 +13,31 @@ export type User = {
   role: Role;
   driverStatus: DriverStatus;
   driverLevel?: 1 | 2 | 3 | 4;
+  operationalLimit?: number;
   createdAt: number;
 };
 
 const USERS_KEY = "chekou_users_v1";
 const SESSION_KEY = "chekou_session_v1";
 const SEED_KEY = "chekou_seed_v1";
+const SEED_VERSION = "2";
 
 const SEED_USERS: User[] = [
+  {
+    id: "u_admin_local", name: "Dragon Fire Admin", email: "admin@chekou.local",
+    phone: "(64) 90000-0000", password: "admin123",
+    role: "admin", driverStatus: "none", createdAt: Date.now(),
+  },
+  {
+    id: "u_client_local", name: "Maria Cliente", email: "cliente@chekou.local",
+    phone: "(64) 90000-0001", password: "123456",
+    role: "client", driverStatus: "none", createdAt: Date.now(),
+  },
+  {
+    id: "u_driver_local", name: "João Entregador", email: "entregador@chekou.local",
+    phone: "(64) 90000-0002", password: "123456",
+    role: "driver", driverStatus: "approved", driverLevel: 2, operationalLimit: 150, createdAt: Date.now(),
+  },
   {
     id: "u_client_1", name: "Maria Cliente", email: "cliente@chekou.com",
     phone: "(64) 90000-0001", password: "123456",
@@ -31,12 +46,12 @@ const SEED_USERS: User[] = [
   {
     id: "u_driver_1", name: "João Entregador", email: "entregador@chekou.com",
     phone: "(64) 90000-0002", password: "123456",
-    role: "driver", driverStatus: "approved", driverLevel: 2, createdAt: Date.now(),
+    role: "driver", driverStatus: "approved", driverLevel: 2, operationalLimit: 150, createdAt: Date.now(),
   },
   {
     id: "u_driver_2", name: "Carlos Pendente", email: "pendente@chekou.com",
     phone: "(64) 90000-0003", password: "123456",
-    role: "client", driverStatus: "pending", createdAt: Date.now(),
+    role: "driver", driverStatus: "pending", driverLevel: 1, operationalLimit: 50, createdAt: Date.now(),
   },
   {
     id: "u_admin_1", name: "Admin Chekou", email: "admin@chekou.com",
@@ -63,14 +78,25 @@ async function persist() {
 
 async function ensureSeed() {
   const seeded = await storage.getItem<string>(SEED_KEY, "");
-  if (seeded === "1") return;
-  await storage.setItem(USERS_KEY, JSON.stringify(SEED_USERS));
-  await storage.setItem(SEED_KEY, "1");
-  cache = [...SEED_USERS];
+  if (seeded === SEED_VERSION) return;
+  const raw = (await storage.getItem<string>(USERS_KEY, "")) || "";
+  const existing = raw ? (JSON.parse(raw) as User[]) : [];
+  const byEmail = new Map(existing.map((u) => [u.email.toLowerCase(), u]));
+  for (const seed of SEED_USERS) {
+    const key = seed.email.toLowerCase();
+    byEmail.set(key, byEmail.has(key) ? { ...byEmail.get(key)!, ...seed } : seed);
+  }
+  const merged = Array.from(byEmail.values());
+  await storage.setItem(USERS_KEY, JSON.stringify(merged));
+  await storage.setItem(SEED_KEY, SEED_VERSION);
+  cache = merged;
 }
 
 export const authService = {
-  subscribe(cb: () => void) { listeners.add(cb); return () => listeners.delete(cb); },
+  subscribe(cb: () => void) {
+    listeners.add(cb);
+    return () => { listeners.delete(cb); };
+  },
 
   async getAllUsers(): Promise<User[]> {
     return [...(await load())];
@@ -132,5 +158,13 @@ export const authService = {
     cache = users;
     await persist();
     return users[idx];
+  },
+
+  async remove(id: string): Promise<void> {
+    const users = await load();
+    cache = users.filter((u) => u.id !== id);
+    const sessionId = await storage.getItem<string>(SESSION_KEY, "");
+    if (sessionId === id) await storage.removeItem(SESSION_KEY);
+    await persist();
   },
 };

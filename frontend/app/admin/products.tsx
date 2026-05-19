@@ -29,7 +29,7 @@ export default function AdminProducts() {
     setEditing({
       id: `p_${Date.now()}`, name: "", category: "Mercado",
       storeId: stores[0]?.id ?? "tosta-2",
-      price: 0, active: true, confirmInStore: true, notes: "",
+      price: 0, active: true, confirmInStore: true, imageUrl: "", notes: "",
     });
   }
 
@@ -130,6 +130,7 @@ export default function AdminProducts() {
 
                 <Field label="Preço estimado (R$)" value={String(editing.price)} onChange={(v: string) => setEditing({ ...editing, price: Number(v.replace(",", ".")) || 0 })} keyboardType="numeric" testID="product-price" />
                 <Field label="Preço promocional (opcional)" value={String(editing.promoPrice ?? "")} onChange={(v: string) => setEditing({ ...editing, promoPrice: v ? Number(v.replace(",", ".")) : undefined })} keyboardType="numeric" testID="product-promo" />
+                <Field label="Imagem URL (opcional)" value={editing.imageUrl ?? ""} onChange={(v: string) => setEditing({ ...editing, imageUrl: v })} testID="product-image" />
                 <Field label="Observações" value={editing.notes ?? ""} onChange={(v: string) => setEditing({ ...editing, notes: v })} multiline testID="product-notes" />
 
                 <Row label="Ativo" value={editing.active} onToggle={() => setEditing({ ...editing, active: !editing.active })} testID="product-active" />

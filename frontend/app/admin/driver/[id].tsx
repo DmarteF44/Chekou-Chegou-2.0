@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, TextInput } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
@@ -13,16 +13,17 @@ import { money } from "@/src/components/FinancialBreakdown";
 
 export default function DriverDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [app, setApp] = useState<DriverApplication | null>(null);
   const [stats, setStats] = useState({ done: 0, cancelled: 0, balance: 0, pending: 0 });
+  const [limitInput, setLimitInput] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
       const u = await authService.getById(id as string);
       setUser(u ?? null);
       setApp((await driverService.getApplication(id as string)) ?? null);
+      setLimitInput(String(u?.operationalLimit ?? ""));
       const history = await orderService.driverHistory(id as string);
       const active = await orderService.driverActive(id as string);
       setStats({
@@ -55,6 +56,15 @@ export default function DriverDetail() {
   async function setLevel(l: DriverLevel) {
     await driverService.setLevel(user!.id, l);
     Alert.alert("Nível atualizado", `Novo nível: ${DRIVER_LEVELS[l].name}`);
+  }
+  async function saveLimit() {
+    const value = Number(limitInput.replace(",", "."));
+    if (!(value >= 0)) {
+      Alert.alert("Limite inválido", "Informe um valor numérico.");
+      return;
+    }
+    await driverService.setOperationalLimit(user!.id, value);
+    Alert.alert("Limite atualizado", money(value));
   }
 
   return (
@@ -114,7 +124,18 @@ export default function DriverDetail() {
           <Row label="Nota média" value="—" />
           <Row label="Saldo liberado" value={money(stats.balance)} />
           <Row label="Saldo pendente" value={money(stats.pending)} />
-          <Row label="Limite operacional" value={money(levelInfo.limit)} />
+          <Row label="Limite operacional" value={money(user.operationalLimit ?? levelInfo.limit)} />
+          <View style={styles.limitEditRow}>
+            <TextInput
+              value={limitInput}
+              onChangeText={setLimitInput}
+              keyboardType="numeric"
+              style={styles.limitInput}
+              placeholder="Limite operacional"
+              placeholderTextColor={colors.textTertiary}
+            />
+            <Button title="Salvar limite" variant="secondary" onPress={saveLimit} />
+          </View>
         </View>
 
         <View style={{ gap: spacing.sm }}>
@@ -164,4 +185,6 @@ const styles = StyleSheet.create({
   levelRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
   levelBtn: { flex: 1, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, alignItems: "center", backgroundColor: colors.surface },
   levelBtnText: { fontWeight: "800", color: colors.textSecondary },
+  limitEditRow: { flexDirection: "row", gap: spacing.sm, alignItems: "center", marginTop: spacing.sm },
+  limitInput: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm, color: colors.textPrimary, minHeight: 48 },
 });

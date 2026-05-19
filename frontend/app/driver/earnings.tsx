@@ -9,7 +9,7 @@ import { Order } from "@/src/data/mock";
 import { money } from "@/src/components/FinancialBreakdown";
 import { StatusPill } from "@/src/components/StatusPill";
 import { authService, User } from "@/src/services/authService";
-import { driverService, DRIVER_LEVELS, DriverLevel } from "@/src/services/driverService";
+import { DRIVER_LEVELS, DriverLevel } from "@/src/services/driverService";
 
 export default function Earnings() {
   const [me, setMe] = useState<User | null>(null);

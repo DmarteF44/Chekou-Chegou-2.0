@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from "react-native";
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput,
+  KeyboardAvoidingView, Platform,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,8 +14,8 @@ import { money } from "@/src/components/FinancialBreakdown";
 import { authService, User } from "@/src/services/authService";
 import { adminService } from "@/src/services/adminService";
 import { orderService } from "@/src/services/orderService";
-import { driverService, DRIVER_LEVELS } from "@/src/services/driverService";
-import { Order } from "@/src/data/mock";
+import { DRIVER_LEVELS } from "@/src/services/driverService";
+import { Order, ORDER_STATUSES, OrderStatus } from "@/src/data/mock";
 
 const TABS = ["Resumo", "Pedidos", "Motoristas", "Usuários", "Lojas", "Produtos", "Cupons", "Disputas"] as const;
 type Tab = typeof TABS[number];
@@ -24,6 +27,7 @@ export default function AdminIndex() {
   const [users, setUsers] = useState<User[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [stats, setStats] = useState<any>(null);
+  const [editingDriver, setEditingDriver] = useState<User | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -59,6 +63,69 @@ export default function AdminIndex() {
       { text: "Cancelar", style: "cancel" },
       { text: "Apagar", style: "destructive", onPress: () => orderService.clearAll() },
     ]);
+  }
+
+  function newDriver() {
+    setEditingDriver({
+      id: `u_driver_${Date.now()}`,
+      name: "",
+      email: "",
+      phone: "",
+      password: "123456",
+      role: "driver",
+      driverStatus: "approved",
+      driverLevel: 1,
+      operationalLimit: DRIVER_LEVELS[1].limit,
+      createdAt: Date.now(),
+    });
+  }
+
+  async function saveDriver() {
+    if (!editingDriver) return;
+    if (!editingDriver.name.trim() || !editingDriver.email.includes("@")) {
+      Alert.alert("Dados inválidos", "Informe nome e e-mail do entregador.");
+      return;
+    }
+    const users = await authService.getAllUsers();
+    const exists = users.find((u) => u.id === editingDriver.id);
+    if (exists) {
+      await authService.update(editingDriver.id, editingDriver);
+    } else {
+      const created = await authService.signup({
+        name: editingDriver.name,
+        email: editingDriver.email,
+        phone: editingDriver.phone,
+        password: editingDriver.password || "123456",
+      });
+      if (!created) {
+        Alert.alert("E-mail já cadastrado", "Use outro e-mail para este entregador.");
+        return;
+      }
+      await authService.update(created.id, {
+        role: "driver",
+        driverStatus: editingDriver.driverStatus,
+        driverLevel: editingDriver.driverLevel,
+        operationalLimit: editingDriver.operationalLimit,
+      });
+      await authService.logout();
+      await authService.login(me!.email, me!.password);
+    }
+    setEditingDriver(null);
+  }
+
+  async function removeDriver(user: User) {
+    Alert.alert("Remover entregador", `Remover ${user.name}?`, [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Remover",
+        style: "destructive",
+        onPress: async () => authService.remove(user.id),
+      },
+    ]);
+  }
+
+  async function updateOrderStatus(order: Order, status: OrderStatus) {
+    await orderService.update(order.id, { status });
   }
 
   if (!me) return null;
@@ -109,19 +176,28 @@ export default function AdminIndex() {
           <>
             {orders.length === 0 && <Empty text="Nenhum pedido ainda." />}
             {orders.map((o) => (
-              <TouchableOpacity
-                key={o.id}
-                style={styles.row}
-                onPress={() => router.push(`/client/tracking/${o.id}`)}
-                testID={`admin-order-${o.id}`}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.title}>{o.storeName}</Text>
-                  <Text style={styles.muted}>{new Date(o.createdAt).toLocaleString("pt-BR")}</Text>
-                  <View style={{ marginTop: 4 }}><StatusPill status={o.status} /></View>
-                </View>
-                <Text style={styles.amount}>{money(o.total)}</Text>
-              </TouchableOpacity>
+              <View key={o.id} style={{ gap: spacing.xs }}>
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => router.push(`/client/tracking/${o.id}`)}
+                  testID={`admin-order-${o.id}`}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.title}>{o.storeName}</Text>
+                    <Text style={styles.muted}>{new Date(o.createdAt).toLocaleString("pt-BR")}</Text>
+                    <Text style={styles.muted}>{o.items}</Text>
+                    <View style={{ marginTop: 4 }}><StatusPill status={o.status} /></View>
+                  </View>
+                  <Text style={styles.amount}>{money(o.total)}</Text>
+                </TouchableOpacity>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionChips}>
+                  {ORDER_STATUSES.map((status) => (
+                    <TouchableOpacity key={status} style={styles.actionChip} onPress={() => updateOrderStatus(o, status)} testID={`admin-order-status-${o.id}-${status}`}>
+                      <Text style={styles.actionChipText}>{status}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
             ))}
             {orders.length > 0 && <Button title="Apagar todos os pedidos" variant="ghost" onPress={resetOrders} testID="admin-reset-orders" />}
           </>
@@ -129,6 +205,7 @@ export default function AdminIndex() {
 
         {tab === "Motoristas" && (
           <>
+            <Button title="Adicionar entregador" onPress={newDriver} testID="admin-driver-new" icon={<Ionicons name="add" size={18} color={colors.white} />} />
             {drivers.length === 0 && <Empty text="Nenhum motorista cadastrado." />}
             {drivers.map((u) => {
               const level = (u.driverLevel ?? 1) as 1|2|3|4;
@@ -154,6 +231,14 @@ export default function AdminIndex() {
                     </View>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
+                  <View style={styles.driverActions}>
+                    <TouchableOpacity onPress={() => setEditingDriver(u)} testID={`admin-driver-edit-${u.id}`}>
+                      <Ionicons name="create-outline" size={20} color={colors.info} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => removeDriver(u)} testID={`admin-driver-remove-${u.id}`}>
+                      <Ionicons name="trash-outline" size={20} color={colors.error} />
+                    </TouchableOpacity>
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -181,7 +266,7 @@ export default function AdminIndex() {
           <>
             <Text style={styles.notice}>
               O Chekou Ganhou é uma plataforma independente de compra assistida e entrega.
-              Estabelecimentos exibidos como "mais pedidos" não representam parceria oficial,
+              Estabelecimentos exibidos como mais pedidos não representam parceria oficial,
               salvo indicação expressa.
             </Text>
             <Button
@@ -212,6 +297,52 @@ export default function AdminIndex() {
 
         {tab === "Disputas" && <Empty text="Nenhuma disputa em aberto." />}
       </ScrollView>
+
+      <Modal visible={!!editingDriver} animationType="slide" onRequestClose={() => setEditingDriver(null)}>
+        <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+          <Header title="Entregador" />
+          {editingDriver && (
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+              <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+                <DriverField label="Nome" value={editingDriver.name} onChange={(v) => setEditingDriver({ ...editingDriver, name: v })} />
+                <DriverField label="E-mail" value={editingDriver.email} onChange={(v) => setEditingDriver({ ...editingDriver, email: v })} keyboardType="email-address" />
+                <DriverField label="Telefone" value={editingDriver.phone} onChange={(v) => setEditingDriver({ ...editingDriver, phone: v })} keyboardType="phone-pad" />
+                <DriverField label="Senha" value={editingDriver.password} onChange={(v) => setEditingDriver({ ...editingDriver, password: v })} />
+                <DriverField label="Limite operacional" value={String(editingDriver.operationalLimit ?? "")} onChange={(v) => setEditingDriver({ ...editingDriver, operationalLimit: Number(v.replace(",", ".")) || 0 })} keyboardType="numeric" />
+
+                <Text style={styles.muted}>Nível</Text>
+                <View style={styles.inlineRow}>
+                  {([1, 2, 3, 4] as const).map((level) => (
+                    <TouchableOpacity
+                      key={level}
+                      style={[styles.levelBtn, editingDriver.driverLevel === level && styles.levelBtnActive]}
+                      onPress={() => setEditingDriver({ ...editingDriver, driverLevel: level, operationalLimit: DRIVER_LEVELS[level].limit })}
+                    >
+                      <Text style={[styles.levelBtnText, editingDriver.driverLevel === level && { color: colors.white }]}>N{level}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.muted}>Status</Text>
+                <View style={styles.inlineRow}>
+                  {(["approved", "pending", "blocked"] as const).map((status) => (
+                    <TouchableOpacity
+                      key={status}
+                      style={[styles.statusBtn, editingDriver.driverStatus === status && styles.levelBtnActive]}
+                      onPress={() => setEditingDriver({ ...editingDriver, driverStatus: status })}
+                    >
+                      <Text style={[styles.levelBtnText, editingDriver.driverStatus === status && { color: colors.white }]}>{status}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Button title="Salvar entregador" onPress={saveDriver} testID="admin-driver-save" />
+                <Button title="Cancelar" variant="ghost" onPress={() => setEditingDriver(null)} />
+              </ScrollView>
+            </KeyboardAvoidingView>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -240,6 +371,23 @@ function Empty({ text }: { text: string }) {
     <View style={styles.empty}>
       <Ionicons name="folder-open-outline" size={36} color={colors.textTertiary} />
       <Text style={styles.emptyText}>{text}</Text>
+    </View>
+  );
+}
+function DriverField({ label, value, onChange, keyboardType }: {
+  label: string; value: string; onChange: (value: string) => void; keyboardType?: any;
+}) {
+  return (
+    <View style={{ gap: 4 }}>
+      <Text style={styles.muted}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        keyboardType={keyboardType}
+        autoCapitalize={keyboardType === "email-address" ? "none" : "sentences"}
+        style={styles.input}
+        placeholderTextColor={colors.textTertiary}
+      />
     </View>
   );
 }
@@ -279,6 +427,16 @@ const styles = StyleSheet.create({
   badgeText: { fontWeight: "700", fontSize: fontSize.small },
   levelBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
   levelBadgeText: { fontWeight: "700", fontSize: fontSize.small },
+  driverActions: { gap: spacing.sm, alignItems: "center" },
+  actionChips: { gap: spacing.xs, paddingVertical: spacing.xs },
+  actionChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  actionChipText: { color: colors.primary, fontWeight: "700", fontSize: fontSize.small },
+  input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, color: colors.textPrimary, backgroundColor: colors.surface, minHeight: 50 },
+  inlineRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
+  levelBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  levelBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  levelBtnText: { color: colors.textSecondary, fontWeight: "800", fontSize: fontSize.small },
+  statusBtn: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   empty: { alignItems: "center", gap: 8, padding: spacing.xl, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borderLight },
   emptyText: { color: colors.textSecondary },
   statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },

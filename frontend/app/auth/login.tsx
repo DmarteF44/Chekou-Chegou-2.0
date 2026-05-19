@@ -16,13 +16,13 @@ export default function Login() {
   const [pw, setPw] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function submit() {
-    if (!email.trim() || !pw) {
+  async function submit(nextEmail = email, nextPw = pw) {
+    if (!nextEmail.trim() || !nextPw) {
       Alert.alert("Atenção", "Informe e-mail e senha.");
       return;
     }
     setLoading(true);
-    const u = await authService.login(email, pw);
+    const u = await authService.login(nextEmail, nextPw);
     setLoading(false);
     if (!u) {
       Alert.alert("Login falhou", "E-mail ou senha incorretos.");
@@ -31,8 +31,10 @@ export default function Login() {
     router.replace("/");
   }
 
-  function fill(e: string, p: string) {
-    setEmail(e); setPw(p);
+  async function quickLogin(e: string, p: string) {
+    setEmail(e);
+    setPw(p);
+    await submit(e, p);
   }
 
   return (
@@ -68,10 +70,9 @@ export default function Login() {
               <Ionicons name="flask" size={14} color={colors.textSecondary} />
               <Text style={styles.demoTitle}>Contas de demonstração</Text>
             </View>
-            <DemoBtn onPress={() => fill("cliente@chekou.com", "123456")} testID="demo-client" label="Cliente" sub="cliente@chekou.com" />
-            <DemoBtn onPress={() => fill("entregador@chekou.com", "123456")} testID="demo-driver" label="Entregador aprovado" sub="entregador@chekou.com" />
-            <DemoBtn onPress={() => fill("pendente@chekou.com", "123456")} testID="demo-pending" label="Entregador pendente" sub="pendente@chekou.com" />
-            <DemoBtn onPress={() => fill("admin@chekou.com", "admin123")} testID="demo-admin" label="Admin" sub="admin@chekou.com" />
+            <DemoBtn onPress={() => quickLogin("cliente@chekou.local", "123456")} testID="demo-client" label="Entrar como Cliente teste" sub="cliente@chekou.local" />
+            <DemoBtn onPress={() => quickLogin("entregador@chekou.local", "123456")} testID="demo-driver" label="Entrar como Entregador teste" sub="entregador@chekou.local" />
+            <DemoBtn onPress={() => quickLogin("admin@chekou.local", "admin123")} testID="demo-admin" label="Admin local" sub="admin@chekou.local" />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

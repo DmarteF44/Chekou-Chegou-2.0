@@ -1,5 +1,4 @@
-// driverService — handles partner application, levels, status changes.
-// FUTURE: move to Supabase tables (drivers, driver_applications, driver_levels).
+// driverService — handles local partner applications, levels, and status changes.
 import { authService, User } from "./authService";
 import { storage } from "@/src/utils/storage";
 
@@ -63,7 +62,7 @@ export const driverService = {
   },
 
   async approve(userId: string): Promise<void> {
-    await authService.update(userId, { driverStatus: "approved", role: "driver", driverLevel: 1 });
+    await authService.update(userId, { driverStatus: "approved", role: "driver", driverLevel: 1, operationalLimit: DRIVER_LEVELS[1].limit });
   },
 
   async reject(userId: string): Promise<void> {
@@ -79,7 +78,11 @@ export const driverService = {
   },
 
   async setLevel(userId: string, level: DriverLevel): Promise<void> {
-    await authService.update(userId, { driverLevel: level });
+    await authService.update(userId, { driverLevel: level, operationalLimit: DRIVER_LEVELS[level].limit });
+  },
+
+  async setOperationalLimit(userId: string, limit: number): Promise<void> {
+    await authService.update(userId, { operationalLimit: Math.max(0, limit) });
   },
 
   getLevelInfo(level: DriverLevel) {
@@ -91,7 +94,7 @@ export const driverService = {
     if (user.role !== "driver") return { ok: false, reason: "Você não é um Motorista Parceiro." };
     if (user.driverStatus !== "approved") return { ok: false, reason: "Sua conta de entregador não está ativa." };
     const level = (user.driverLevel ?? 1) as DriverLevel;
-    const limit = DRIVER_LEVELS[level].limit;
+    const limit = user.operationalLimit ?? DRIVER_LEVELS[level].limit;
     if (estimatedValue > limit) {
       return { ok: false, reason: `Limite operacional do seu nível (${DRIVER_LEVELS[level].name}): R$ ${limit}.` };
     }

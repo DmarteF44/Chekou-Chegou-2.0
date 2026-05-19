@@ -11,7 +11,7 @@ import { FinancialBreakdown, money } from "@/src/components/FinancialBreakdown";
 import { orderStore } from "@/src/data/orderStore";
 import { Order, ORDER_STATUSES, OrderStatus } from "@/src/data/mock";
 import { authService, User } from "@/src/services/authService";
-import { driverService, DRIVER_LEVELS, DriverLevel } from "@/src/services/driverService";
+import { driverService } from "@/src/services/driverService";
 
 export default function DriverOrder() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -42,11 +42,11 @@ export default function DriverOrder() {
   }
 
   const isMine = order.driverId === me?.id;
-  const canAccept = order.status === "Aguardando entregador" && !!me;
+  const canAccept = order.status === "Aguardando entregador" && !!me && me.role === "driver" && me.driverStatus === "approved";
 
   async function acceptOrder() {
     if (!me) { Alert.alert("Atenção", "Faça login como entregador."); return; }
-    const check = driverService.canAcceptOrder(me, order!.estimatedValue);
+    const check = driverService.canAcceptOrder(me, order!.authorizedPurchaseLimit ?? order!.estimatedValue);
     if (!check.ok) {
       Alert.alert("Limite operacional", check.reason ?? "Você não pode aceitar este pedido.");
       return;
@@ -58,7 +58,8 @@ export default function DriverOrder() {
   async function nextStatus() {
     const idx = ORDER_STATUSES.indexOf(order!.status);
     if (idx < 0 || idx >= ORDER_STATUSES.length - 1) return;
-    const next: OrderStatus = ORDER_STATUSES[idx + 1];
+    const candidate = ORDER_STATUSES[idx + 1];
+    const next: OrderStatus = candidate === "Aguardando complemento do cliente" ? "A caminho do cliente" : candidate;
     await orderStore.setStatus(order!.id, next);
   }
 
@@ -68,7 +69,15 @@ export default function DriverOrder() {
       Alert.alert("Valor inválido", "Informe o valor real da compra.");
       return;
     }
-    await orderStore.update(order!.id, { actualValue: v });
+    const limit = order!.authorizedPurchaseLimit ?? order!.estimatedValue + order!.safetyMargin;
+    if (v > limit) {
+      await orderStore.update(order!.id, { actualValue: v, status: "Aguardando complemento do cliente" });
+      Alert.alert("Complemento necessário", `Valor real ${money(v)} ultrapassa o limite autorizado de ${money(limit)}.`);
+      return;
+    }
+    const nextPatch: Partial<Order> = { actualValue: v };
+    if (order!.status === "Aguardando complemento do cliente") nextPatch.status = "Comprando produtos";
+    await orderStore.update(order!.id, nextPatch);
     Alert.alert("Valor salvo!", `Compra real: ${money(v)}`);
   }
 
@@ -86,6 +95,10 @@ export default function DriverOrder() {
       Alert.alert("Código incorreto", "Confira o código informado pelo cliente.");
       return;
     }
+    if (order!.status === "Aguardando complemento do cliente") {
+      Alert.alert("Aguardando complemento", "Finalize somente após o cliente autorizar o complemento.");
+      return;
+    }
     await orderStore.setStatus(order!.id, "Entregue");
     // Navigate FIRST (Alert per-button onPress doesn't fire reliably on react-native-web).
     router.replace("/driver/home");
@@ -95,8 +108,10 @@ export default function DriverOrder() {
   const nextLabel = (() => {
     const idx = ORDER_STATUSES.indexOf(order.status);
     if (idx < 0) return null;
-    if (idx >= ORDER_STATUSES.length - 2) return null; // last next is "A caminho"; "Entregue" via code
-    return `Avançar: ${ORDER_STATUSES[idx + 1]}`;
+    if (order.status === "A caminho do cliente" || order.status === "Entregue" || order.status === "Cancelado") return null;
+    const candidate = ORDER_STATUSES[idx + 1];
+    const next = candidate === "Aguardando complemento do cliente" ? "A caminho do cliente" : candidate;
+    return `Avançar: ${next}`;
   })();
 
   const sobra = order.actualValue !== undefined
@@ -155,8 +170,11 @@ export default function DriverOrder() {
                 />
                 <Button title="Salvar" variant="secondary" onPress={saveActualValue} testID="driver-save-actual" />
               </View>
-              {sobra !== null && (
-                <Text style={styles.refundText}>Sobra a devolver: {money(sobra)}</Text>
+            {sobra !== null && (
+              <Text style={styles.refundText}>Sobra a devolver: {money(sobra)}</Text>
+            )}
+              {order.status === "Aguardando complemento do cliente" && (
+                <Text style={styles.warnText}>Pedido bloqueado até complemento do cliente.</Text>
               )}
             </View>
 
@@ -251,6 +269,7 @@ const styles = StyleSheet.create({
   },
   codeInput: { textAlign: "center", fontSize: 22, letterSpacing: 8, fontWeight: "700" },
   refundText: { color: colors.primaryDark, fontWeight: "700", marginTop: 4 },
+  warnText: { color: colors.warning, fontWeight: "800", marginTop: 4 },
   proofRow: { flexDirection: "row", gap: spacing.sm },
   proofBtn: {
     flex: 1, alignItems: "center", padding: spacing.md, borderRadius: radius.md,

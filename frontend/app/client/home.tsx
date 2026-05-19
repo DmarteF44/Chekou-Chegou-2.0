@@ -91,7 +91,7 @@ export default function ClientHome() {
               onPress={() => router.push("/client/promotions")}
               testID={`promo-card-${item.id}`}
             >
-              <Image source={{ uri: item.image }} style={styles.promoImg} />
+              {item.image ? <Image source={{ uri: item.image }} style={styles.promoImg} /> : <View style={styles.promoImgFallback} />}
               <View style={styles.discountBadge}>
                 <Text style={styles.discountText}>{item.discount}</Text>
               </View>
@@ -139,7 +139,11 @@ export default function ClientHome() {
               onPress={() => router.push(`/client/store/${e.id}`)}
               testID={`store-card-${e.id}`}
             >
-              <Image source={{ uri: e.image }} style={styles.storeImg} />
+              {e.image ? (
+                <Image source={{ uri: e.image }} style={styles.storeImg} />
+              ) : (
+                <View style={styles.storeImgFallback}><Ionicons name="storefront" size={24} color={colors.primary} /></View>
+              )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.storeName}>{e.name}</Text>
                 <Text style={styles.storeCat}>{e.category}</Text>
@@ -208,6 +212,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, position: "relative",
   },
   promoImg: { width: "100%", height: "100%" },
+  promoImgFallback: { width: "100%", height: "100%", backgroundColor: colors.primary },
   promoOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.35)" },
   promoText: { position: "absolute", bottom: spacing.sm, left: spacing.sm, right: spacing.sm },
   promoTitle: { color: colors.white, fontWeight: "700", fontSize: fontSize.bodyLarge },
@@ -236,6 +241,10 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.borderLight,
   },
   storeImg: { width: 64, height: 64, borderRadius: radius.md, backgroundColor: colors.borderLight },
+  storeImgFallback: {
+    width: 64, height: 64, borderRadius: radius.md, backgroundColor: colors.primarySoft,
+    alignItems: "center", justifyContent: "center",
+  },
   storeName: { fontSize: fontSize.bodyLarge, fontWeight: "700", color: colors.textPrimary },
   storeCat: { fontSize: fontSize.small, color: colors.textSecondary, marginTop: 2 },
   storeMeta: { flexDirection: "row", gap: spacing.sm, marginTop: 4 },

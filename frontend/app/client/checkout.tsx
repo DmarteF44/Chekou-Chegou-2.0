@@ -7,23 +7,36 @@ import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
 import { FinancialBreakdown, money } from "@/src/components/FinancialBreakdown";
-import { COUPONS, Order } from "@/src/data/mock";
+import { COUPONS, Order, OrderItem } from "@/src/data/mock";
 import { orderStore, generateCode, generateId } from "@/src/data/orderStore";
 import { paymentService } from "@/src/services/paymentService";
+import { authService } from "@/src/services/authService";
 
-const DELIVERY_FEE = 8;
-const PLATFORM_FEE_RATE = 0.07; // 7%
+const PLATFORM_FEE_RATE = 0.07;
+
+function parseItems(raw?: string | string[]): OrderItem[] {
+  try {
+    const parsed = JSON.parse(String(raw ?? "[]")) as OrderItem[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function Checkout() {
   const router = useRouter();
   const p = useLocalSearchParams<{
-    storeId: string; storeName: string; items: string; notes: string; estimated: string;
+    storeId: string; storeName: string; itemsJson?: string; notes?: string; deliveryFee?: string;
   }>();
 
-  const estValue = Math.max(0, Number(String(p.estimated || "0").replace(",", ".")) || 0);
-  const safety = +(estValue * 0.1).toFixed(2); // 10% margem
-  const platformFee = +(estValue * PLATFORM_FEE_RATE).toFixed(2);
-  let deliveryFee = DELIVERY_FEE;
+  const items = useMemo(() => parseItems(p.itemsJson), [p.itemsJson]);
+  const productSubtotal = items.filter((i) => !i.custom).reduce((acc, item) => acc + item.total, 0);
+  const customSubtotal = items.filter((i) => i.custom).reduce((acc, item) => acc + item.total, 0);
+  const subtotal = +(productSubtotal + customSubtotal).toFixed(2);
+  const safety = +Math.max(subtotal * 0.15, 10).toFixed(2);
+  const authorizedPurchaseLimit = +(subtotal + safety).toFixed(2);
+  let deliveryFee = Math.max(0, Number(String(p.deliveryFee ?? "8").replace(",", ".")) || 8);
+  const platformFee = +(subtotal * PLATFORM_FEE_RATE).toFixed(2);
 
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number; type: string } | null>(null);
@@ -32,23 +45,24 @@ export default function Checkout() {
   let discount = 0;
   if (appliedCoupon) {
     if (appliedCoupon.type === "delivery") {
+      const originalFee = deliveryFee;
       deliveryFee = Math.max(0, deliveryFee - appliedCoupon.discount);
-      discount = Math.min(DELIVERY_FEE, appliedCoupon.discount);
+      discount = Math.min(originalFee, appliedCoupon.discount);
     } else {
-      discount = appliedCoupon.discount;
+      discount = Math.min(subtotal + platformFee, appliedCoupon.discount);
     }
   }
 
   const total = useMemo(
-    () => +(estValue + safety + deliveryFee + platformFee - discount).toFixed(2),
-    [estValue, safety, deliveryFee, platformFee, discount]
+    () => +(authorizedPurchaseLimit + deliveryFee + platformFee - discount).toFixed(2),
+    [authorizedPurchaseLimit, deliveryFee, platformFee, discount]
   );
 
   function applyCoupon() {
     const code = couponInput.trim().toUpperCase();
     const found = COUPONS.find((c) => c.code === code);
     if (!found) {
-      Alert.alert("Cupom inválido", "Esse cupom não existe ou expirou.");
+      Alert.alert("Cupom inválido", "Esse cupom não existe no modo local.");
       return;
     }
     setAppliedCoupon(found);
@@ -56,15 +70,26 @@ export default function Checkout() {
   }
 
   async function pay() {
+    const client = await authService.getSession();
+    if (!client) {
+      router.replace("/auth/login");
+      return;
+    }
     setPaying(true);
+    const itemsText = items.map((item) => `${item.quantity}x ${item.name} - ${money(item.total)}`).join("\n");
     const draft: Order = {
       id: generateId(),
-      storeId: p.storeId as string,
-      storeName: p.storeName as string,
-      items: (p.items as string) || "",
-      notes: (p.notes as string) || "",
-      estimatedValue: estValue,
+      clientId: client.id,
+      storeId: String(p.storeId ?? ""),
+      storeName: String(p.storeName ?? "Estabelecimento"),
+      items: itemsText,
+      orderItems: items,
+      notes: String(p.notes ?? ""),
+      subtotal,
+      customSubtotal,
+      estimatedValue: subtotal,
       safetyMargin: safety,
+      authorizedPurchaseLimit,
       deliveryFee,
       platformFee,
       total,
@@ -78,9 +103,8 @@ export default function Checkout() {
       chat: [],
       paid: false,
     };
-    // Simulated payment flow — in production, this will hit Mercado Pago via backend.
     const intent = await paymentService.createPaymentIntent(draft);
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 400));
     await paymentService.markPaymentAsApproved(intent);
     const order = { ...draft, paid: true };
     await orderStore.create(order);
@@ -89,8 +113,10 @@ export default function Checkout() {
   }
 
   const rows = [
-    { label: "Valor estimado da compra", value: estValue },
-    { label: "Margem de segurança (10%)", value: safety, hint: "Devolvida se sobrar" },
+    { label: "Subtotal produtos", value: productSubtotal },
+    { label: "Subtotal item personalizado", value: customSubtotal },
+    { label: "Margem de segurança", value: safety, hint: "Maior entre 15% e R$ 10" },
+    { label: "Limite autorizado de compra", value: authorizedPurchaseLimit },
     { label: "Taxa de entrega", value: deliveryFee },
     { label: "Taxa da plataforma (7%)", value: platformFee },
   ];
@@ -102,8 +128,15 @@ export default function Checkout() {
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.card}>
           <Text style={styles.storeName}>{p.storeName}</Text>
-          <Text style={styles.itemsTitle}>Itens</Text>
-          <Text style={styles.itemsText}>{p.items}</Text>
+          <Text style={styles.itemsTitle}>Itens selecionados</Text>
+          {items.length === 0 ? (
+            <Text style={styles.itemsText}>Nenhum item no carrinho.</Text>
+          ) : items.map((item, index) => (
+            <View key={`${item.name}-${index}`} style={styles.itemRow}>
+              <Text style={styles.itemsText}>{item.quantity}x {item.name}</Text>
+              <Text style={styles.itemPrice}>{money(item.total)}</Text>
+            </View>
+          ))}
           {p.notes ? (
             <>
               <Text style={styles.itemsTitle}>Observações</Text>
@@ -113,7 +146,7 @@ export default function Checkout() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.couponLabel}>Cupom</Text>
+          <Text style={styles.couponLabel}>Cupom local</Text>
           <View style={styles.couponRow}>
             <TextInput
               value={couponInput}
@@ -134,19 +167,20 @@ export default function Checkout() {
           )}
         </View>
 
-        <FinancialBreakdown rows={rows} total={total} testID="checkout-breakdown" />
+        <FinancialBreakdown rows={rows} total={total} totalLabel="Total autorizado" testID="checkout-breakdown" />
 
         <View style={styles.securityBox}>
           <Ionicons name="lock-closed" size={18} color={colors.primary} />
           <Text style={styles.securityText}>
-            Pagamento simulado. O entregador só recebe a entrega após você informar o código de confirmação.
+            Pagamento simulado e salvo localmente. Nenhuma API externa será chamada.
           </Text>
         </View>
 
         <Button
-          title={`Pagar agora • ${money(total)}`}
+          title={`Simular pagamento • ${money(total)}`}
           onPress={pay}
           loading={paying}
+          disabled={items.length === 0}
           testID="checkout-pay-button"
           icon={<Ionicons name="card" size={20} color={colors.white} />}
         />
@@ -164,7 +198,9 @@ const styles = StyleSheet.create({
   },
   storeName: { fontSize: fontSize.h4, fontWeight: "700", color: colors.textPrimary, marginBottom: spacing.xs },
   itemsTitle: { fontSize: fontSize.small, fontWeight: "700", color: colors.textSecondary, marginTop: spacing.xs },
-  itemsText: { fontSize: fontSize.body, color: colors.textPrimary, lineHeight: 20 },
+  itemsText: { fontSize: fontSize.body, color: colors.textPrimary, lineHeight: 20, flex: 1 },
+  itemRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  itemPrice: { color: colors.primary, fontWeight: "800" },
   couponLabel: { fontSize: fontSize.body, fontWeight: "700", color: colors.textPrimary },
   couponRow: { flexDirection: "row", gap: spacing.sm, alignItems: "center" },
   couponInput: {

@@ -12,7 +12,7 @@ export default function Promotions() {
       <ScrollView contentContainerStyle={styles.container}>
         {PROMOTIONS.map((p) => (
           <View key={p.id} style={styles.card} testID={`promotion-${p.id}`}>
-            <Image source={{ uri: p.image }} style={styles.img} />
+            {p.image ? <Image source={{ uri: p.image }} style={styles.img} /> : <View style={styles.imgFallback} />}
             <View style={styles.badge}><Text style={styles.badgeText}>{p.discount}</Text></View>
             <View style={styles.body}>
               <Text style={styles.title}>{p.title}</Text>
@@ -34,6 +34,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.borderLight,
   },
   img: { width: "100%", height: 160 },
+  imgFallback: { width: "100%", height: 160, backgroundColor: colors.primarySoft },
   badge: {
     position: "absolute", top: spacing.sm, right: spacing.sm,
     backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill,

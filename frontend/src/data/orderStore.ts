@@ -31,7 +31,7 @@ async function persist() {
 export const orderStore = {
   subscribe(cb: Listener) {
     listeners.add(cb);
-    return () => listeners.delete(cb);
+    return () => { listeners.delete(cb); };
   },
 
   async getAll(): Promise<Order[]> {
@@ -45,21 +45,20 @@ export const orderStore = {
   },
 
   async getByClient(): Promise<Order[]> {
-    // For MVP, all orders belong to the single mock client.
     return this.getAll();
   },
 
   async getAvailable(): Promise<Order[]> {
     const list = await load();
     return list
-      .filter((o) => o.status === "Aguardando entregador")
+      .filter((o) => o.status === "Aguardando entregador" && !o.driverId)
       .sort((a, b) => b.createdAt - a.createdAt);
   },
 
   async getDriverActive(driverId: string): Promise<Order[]> {
     const list = await load();
     return list
-      .filter((o) => o.driverId === driverId && o.status !== "Entregue")
+      .filter((o) => o.driverId === driverId && o.status !== "Entregue" && o.status !== "Cancelado")
       .sort((a, b) => b.createdAt - a.createdAt);
   },
 
