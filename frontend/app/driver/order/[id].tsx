@@ -24,14 +24,29 @@ export default function DriverOrder() {
 
   useEffect(() => {
     const refresh = async () => {
-      setMe(await authService.getSession());
+      const session = await authService.getSession();
+      if (!session || session.role !== "driver") {
+        router.replace("/auth/login");
+        return;
+      }
+      if (session.driverStatus === "blocked") {
+        router.replace("/driver/blocked");
+        return;
+      }
+      if (session.driverStatus !== "approved") {
+        router.replace("/driver/pending");
+        return;
+      }
+      setMe(session);
       const o = await orderStore.getById(id as string);
       setOrder(o ?? null);
       if (o?.actualValue !== undefined) setActualValue(String(o.actualValue));
     };
     refresh();
-    return orderStore.subscribe(refresh);
-  }, [id]);
+    const a = orderStore.subscribe(refresh);
+    const b = authService.subscribe(refresh);
+    return () => { a(); b(); };
+  }, [id, router]);
 
   if (!order) {
     return (
@@ -245,7 +260,10 @@ export default function DriverOrder() {
           </>
         ) : (
           <View style={styles.card}>
-            <Text style={styles.h}>Pedido em andamento com outro entregador</Text>
+            <Text style={styles.h}>
+              {order.driverId ? "Pedido em andamento com outro entregador" : "Pedido indisponível para aceite"}
+            </Text>
+            <Text style={styles.hint}>Volte para a lista de pedidos disponíveis para escolher outro pedido.</Text>
           </View>
         )}
       </ScrollView>
