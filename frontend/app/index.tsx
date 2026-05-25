@@ -12,22 +12,26 @@ export default function Index() {
 
   useEffect(() => {
     (async () => {
-      const u = await authService.getSession();
-      if (!u) {
+      try {
+        const u = await authService.getSession();
+        if (!u) {
+          router.replace("/auth/login");
+          return;
+        }
+        if (u.role === "admin" || u.role === "super_admin") {
+          router.replace("/admin");
+          return;
+        }
+        if (u.role === "driver") {
+          if (u.driverStatus === "approved") router.replace("/driver/home");
+          else if (u.driverStatus === "blocked") router.replace("/driver/blocked");
+          else router.replace("/driver/pending");
+          return;
+        }
+        router.replace("/client/home");
+      } catch {
         router.replace("/auth/login");
-        return;
       }
-      if (u.role === "admin" || u.role === "super_admin") {
-        router.replace("/admin");
-        return;
-      }
-      if (u.role === "driver") {
-        if (u.driverStatus === "approved") router.replace("/driver/home");
-        else if (u.driverStatus === "blocked") router.replace("/driver/blocked");
-        else router.replace("/driver/pending");
-        return;
-      }
-      router.replace("/client/home");
     })();
   }, [router]);
 

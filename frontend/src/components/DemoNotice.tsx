@@ -2,13 +2,17 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontSize, radius, spacing } from "@/src/theme/colors";
-import { USE_SUPABASE } from "@/src/config/runtime";
+import { runtime } from "@/src/config/runtime";
+import { SUPABASE_AVAILABLE } from "@/src/lib/supabase";
 
 export function DemoNotice({ compact = false }: { compact?: boolean }) {
+  const text = SUPABASE_AVAILABLE
+    ? "Dados conectados - pagamento simulado"
+    : runtime.supabaseConfigError ?? "Versão demonstrativa local";
   return (
     <View style={[styles.wrap, compact && styles.compact]} testID="demo-local-notice">
-      <Ionicons name={USE_SUPABASE ? "cloud-done-outline" : "phone-portrait-outline"} size={14} color={colors.primaryDark} />
-      <Text style={styles.text}>{USE_SUPABASE ? "Dados conectados - pagamento simulado" : "Versão demonstrativa local"}</Text>
+      <Ionicons name={SUPABASE_AVAILABLE ? "cloud-done-outline" : "phone-portrait-outline"} size={14} color={colors.primaryDark} />
+      <Text style={styles.text}>{text}</Text>
     </View>
   );
 }
