@@ -56,6 +56,7 @@ export default function Login() {
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Image source={require("../../Logo.png")} style={styles.logo} resizeMode="contain" />
           <Text style={styles.brand}>Chekou Ganhou</Text>
+          <Text style={styles.diagLabel}>DIAG v2 • rota login carregada</Text>
           <DemoNotice compact />
           <Text style={styles.tagline}>Peça de mercados, farmácias e lojas locais sem sair de casa.</Text>
 
@@ -107,6 +108,7 @@ const styles = StyleSheet.create({
     alignSelf: "center", marginTop: spacing.lg,
   },
   brand: { fontSize: 28, fontWeight: "800", color: colors.textPrimary, textAlign: "center", marginTop: spacing.sm },
+  diagLabel: { fontSize: fontSize.small, color: colors.textSecondary, fontWeight: "700", textAlign: "center" },
   tagline: { color: colors.textSecondary, textAlign: "center", marginBottom: spacing.md },
   form: {
     gap: spacing.sm, backgroundColor: colors.background, borderWidth: 1,

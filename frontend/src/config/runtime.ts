@@ -1,7 +1,9 @@
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? "";
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
 
-export const FORCE_LOCAL_MODE = false;
+// DIAG v2: isolate Android bootstrap from remote auth for one investigative build.
+// Restore to false after the device test identifies the failing stage.
+export const FORCE_LOCAL_MODE = true;
 
 function isValidSupabaseUrl(value: string): boolean {
   return /^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(value);
