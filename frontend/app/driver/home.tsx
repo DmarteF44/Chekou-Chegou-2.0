@@ -18,17 +18,23 @@ export default function DriverHome() {
   const [available, setAvailable] = useState<Order[]>([]);
   const [active, setActive] = useState<Order[]>([]);
   const [completed, setCompleted] = useState<Order[]>([]);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
-      const u = await authService.getSession();
-      if (!u || u.role !== "driver") { router.replace("/"); return; }
-      if (u.driverStatus === "blocked") { router.replace("/driver/blocked"); return; }
-      if (u.driverStatus !== "approved") { router.replace("/driver/pending"); return; }
-      setMe(u);
-      setAvailable(await orderStore.getAvailable());
-      setActive(await orderStore.getDriverActive(u.id));
-      setCompleted(await orderStore.getDriverHistory(u.id));
+      try {
+        const u = await authService.getSession();
+        if (!u || u.role !== "driver") { router.replace("/"); return; }
+        if (u.driverStatus === "blocked") { router.replace("/driver/blocked"); return; }
+        if (u.driverStatus !== "approved") { router.replace("/driver/pending"); return; }
+        setMe(u);
+        setAvailable(await orderStore.getAvailable());
+        setActive(await orderStore.getDriverActive(u.id));
+        setCompleted(await orderStore.getDriverHistory(u.id));
+        setLoadError("");
+      } catch (reason) {
+        setLoadError(reason instanceof Error ? reason.message : "Pedidos temporariamente indisponíveis.");
+      }
     };
     refresh();
     const a = orderStore.subscribe(refresh);
@@ -72,6 +78,9 @@ export default function DriverHome() {
         <View style={styles.noticeWrap}>
           <DemoNotice />
         </View>
+        {loadError ? (
+          <View style={styles.errorBox}><Text style={styles.errorText}>{loadError}</Text></View>
+        ) : null}
 
         {/* Level strip */}
         <View style={[styles.levelStrip, { borderColor: levelInfo.color }]}>
@@ -188,6 +197,8 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   noticeWrap: { paddingHorizontal: spacing.md, marginBottom: spacing.sm },
+  errorBox: { marginHorizontal: spacing.md, marginBottom: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.errorSoft },
+  errorText: { color: colors.error, fontSize: fontSize.small, fontWeight: "700" },
   earningCard: {
     marginHorizontal: spacing.md, padding: spacing.lg, borderRadius: radius.xl,
     backgroundColor: colors.primary, gap: 4,

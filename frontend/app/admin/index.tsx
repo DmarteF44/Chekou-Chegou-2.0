@@ -35,6 +35,7 @@ export default function AdminIndex() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [editingDriver, setEditingDriver] = useState<User | null>(null);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -50,20 +51,27 @@ export default function AdminIndex() {
 
   useEffect(() => {
     const refresh = async () => {
-      setUsers(await authService.getAllUsers());
-      setOrders(await orderService.list());
-      setStats(await adminService.stats());
-      const [stores, products] = await Promise.all([
-        catalogService.listStores(),
-        catalogService.listProducts(),
-      ]);
-      setCatalogStats({ stores: stores.length, products: products.length });
-      const [nextCoupons, nextPromotions] = await Promise.all([
-        marketingService.listCoupons(),
-        marketingService.listPromotions(),
-      ]);
-      setCoupons(nextCoupons);
-      setPromotions(nextPromotions);
+      try {
+        const session = await authService.getSession();
+        if (!session || (session.role !== "admin" && session.role !== "super_admin")) return;
+        setUsers(await authService.getAllUsers());
+        setOrders(await orderService.list());
+        setStats(await adminService.stats());
+        const [stores, products] = await Promise.all([
+          catalogService.listStores(),
+          catalogService.listProducts(),
+        ]);
+        setCatalogStats({ stores: stores.length, products: products.length });
+        const [nextCoupons, nextPromotions] = await Promise.all([
+          marketingService.listCoupons(),
+          marketingService.listPromotions(),
+        ]);
+        setCoupons(nextCoupons);
+        setPromotions(nextPromotions);
+        setLoadError("");
+      } catch (reason) {
+        setLoadError(reason instanceof Error ? reason.message : "Dados do Admin temporariamente indisponíveis.");
+      }
     };
     refresh();
     const a = authService.subscribe(refresh);
@@ -186,6 +194,7 @@ export default function AdminIndex() {
 
       <ScrollView contentContainerStyle={styles.body}>
         <DemoNotice />
+        {loadError ? <Text style={styles.errorNotice}>{loadError}</Text> : null}
         {tab === "Resumo" && stats && (
           <>
             <View style={styles.statsGrid}>
@@ -298,7 +307,11 @@ export default function AdminIndex() {
               Estabelecimentos exibidos como mais pedidos não representam parceria oficial,
               salvo indicação expressa.
             </Text>
-            <Card title="Catálogo local" subtitle={`${catalogStats.stores} estabelecimentos salvos no AsyncStorage`} badge="Offline" />
+            <Card
+              title={USE_SUPABASE ? "Catálogo conectado" : "Catálogo local"}
+              subtitle={`${catalogStats.stores} estabelecimentos ${USE_SUPABASE ? "no Supabase" : "salvos no AsyncStorage"}`}
+              badge={USE_SUPABASE ? "Online" : "Offline"}
+            />
             <Button
               title="Gerenciar estabelecimentos"
               onPress={() => router.push("/admin/establishments")}
@@ -486,5 +499,9 @@ const styles = StyleSheet.create({
   notice: {
     backgroundColor: colors.infoSoft, color: colors.info,
     padding: spacing.md, borderRadius: radius.md, fontSize: fontSize.small, lineHeight: 18,
+  },
+  errorNotice: {
+    backgroundColor: colors.errorSoft, color: colors.error,
+    padding: spacing.md, borderRadius: radius.md, fontSize: fontSize.small, fontWeight: "700",
   },
 });

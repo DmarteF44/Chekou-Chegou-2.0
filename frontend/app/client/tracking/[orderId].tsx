@@ -11,6 +11,7 @@ import { StatusTracker } from "@/src/components/StatusTracker";
 import { FinancialBreakdown, money } from "@/src/components/FinancialBreakdown";
 import { orderStore } from "@/src/data/orderStore";
 import { Order } from "@/src/data/mock";
+import { USE_SUPABASE } from "@/src/config/runtime";
 
 export default function Tracking() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
@@ -46,14 +47,18 @@ export default function Tracking() {
       Alert.alert("Sem complemento", "O valor real ainda não ultrapassou o limite autorizado.");
       return;
     }
-    await orderStore.update(currentOrder.id, {
-      authorizedPurchaseLimit: currentOrder.actualValue,
-      complementAmount,
-      complementApprovedAt: Date.now(),
-      total: +(currentOrder.total + complementAmount).toFixed(2),
-      status: "Comprando produtos",
-    });
-    Alert.alert("Complemento aprovado", `Complemento local de ${money(complementAmount)} autorizado.`);
+    try {
+      await orderStore.update(currentOrder.id, {
+        authorizedPurchaseLimit: currentOrder.actualValue,
+        complementAmount,
+        complementApprovedAt: Date.now(),
+        total: +(currentOrder.total + complementAmount).toFixed(2),
+        status: "Comprando produtos",
+      });
+      Alert.alert("Complemento aprovado", `${USE_SUPABASE ? "Complemento" : "Complemento local"} de ${money(complementAmount)} autorizado.`);
+    } catch (error) {
+      Alert.alert("Não foi possível aprovar", error instanceof Error ? error.message : "Tente novamente.");
+    }
   }
 
   return (

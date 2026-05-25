@@ -10,6 +10,10 @@ const listeners = new Set<Listener>();
 
 let cache: Order[] | null = null;
 
+function isUuid(id?: string) {
+  return Boolean(id?.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i));
+}
+
 function mapOrder(row: any): Order {
   const orderItems = (row.order_items ?? []).map((item: any) => ({
     productId: item.product_id ?? undefined,
@@ -195,7 +199,7 @@ export const orderStore = {
       order.id = data.id;
       const items = (order.orderItems ?? []).map((item) => ({
         order_id: data.id,
-        product_id: item.productId && item.productId.startsWith("p_") ? null : item.productId ?? null,
+        product_id: isUuid(item.productId) ? item.productId : null,
         name: item.name,
         quantity: item.quantity,
         unit_price: item.unitPrice,
@@ -218,15 +222,29 @@ export const orderStore = {
 
   async update(id: string, patch: Partial<Order>): Promise<Order | undefined> {
     if (USE_SUPABASE && supabase) {
-      const { data, error } = await supabase
-        .from("orders")
-        .update(patchPayload(patch))
-        .eq("id", id)
-        .select("*, establishments(name), order_items(*)")
-        .maybeSingle();
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível atualizar pedido."));
+      if (patch.complementApprovedAt !== undefined) {
+        const { error } = await supabase.rpc("approve_order_complement", { p_order_id: id });
+        if (error) throw new Error(friendlySupabaseError(error, "Não foi possível aprovar o complemento."));
+      } else if (patch.driverId !== undefined) {
+        const { error } = await supabase.rpc("accept_order", { p_order_id: id });
+        if (error) throw new Error(friendlySupabaseError(error, "Não foi possível aceitar pedido."));
+      } else {
+        const driverPayload = patchPayload(patch);
+        const { error: driverError } = await supabase.rpc("driver_progress_order", {
+          p_order_id: id,
+          p_status: (driverPayload.status as string | undefined) ?? null,
+          p_actual_value: (driverPayload.actual_value as number | undefined) ?? null,
+          p_invoice_photo_sent: (driverPayload.invoice_photo_sent as boolean | undefined) ?? null,
+          p_goods_photo_sent: (driverPayload.goods_photo_sent as boolean | undefined) ?? null,
+        });
+        if (driverError) {
+          const { error: adminError } = await supabase.from("orders").update(driverPayload).eq("id", id);
+          if (adminError) throw new Error(friendlySupabaseError(adminError, "Não foi possível atualizar pedido."));
+        }
+      }
+      const current = await this.getById(id);
       listeners.forEach((l) => l());
-      return data ? mapOrder(data) : undefined;
+      return current;
     }
     const list = await load();
     const idx = list.findIndex((o) => o.id === id);
@@ -239,6 +257,19 @@ export const orderStore = {
 
   async setStatus(id: string, status: OrderStatus): Promise<void> {
     await this.update(id, { status });
+  },
+
+  async completeDelivery(id: string, confirmationCode: string): Promise<void> {
+    if (USE_SUPABASE && supabase) {
+      const { error } = await supabase.rpc("complete_delivery", {
+        p_order_id: id,
+        p_confirmation_code: confirmationCode.trim(),
+      });
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível concluir entrega."));
+      listeners.forEach((l) => l());
+      return;
+    }
+    await this.setStatus(id, "Entregue");
   },
 
   async addMessage(id: string, msg: ChatMessage): Promise<void> {
@@ -255,7 +286,12 @@ export const orderStore = {
   },
 
   async clearAll(): Promise<void> {
-    if (USE_SUPABASE) return;
+    if (USE_SUPABASE && supabase) {
+      const { error } = await supabase.from("orders").delete().neq("status", "__never__");
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível apagar pedidos."));
+      listeners.forEach((l) => l());
+      return;
+    }
     cache = [];
     await persist();
   },

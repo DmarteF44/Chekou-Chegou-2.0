@@ -23,13 +23,31 @@ export default function Login() {
       return;
     }
     setLoading(true);
-    const u = await authService.login(nextEmail, nextPw);
-    setLoading(false);
-    if (!u) {
-      Alert.alert("Login falhou", "E-mail ou senha incorretos.");
+    try {
+      const u = await authService.login(nextEmail, nextPw);
+      if (!u) {
+        Alert.alert("Login falhou", "E-mail ou senha incorretos.");
+        return;
+      }
+      router.replace("/");
+    } catch (error) {
+      Alert.alert("Não foi possível entrar", error instanceof Error ? error.message : "Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resetPassword() {
+    if (!email.trim()) {
+      Alert.alert("Recuperar senha", "Informe seu e-mail primeiro.");
       return;
     }
-    router.replace("/");
+    try {
+      await authService.resetPassword(email);
+      Alert.alert("Recuperar senha", "Enviamos as instruções para seu e-mail.");
+    } catch (error) {
+      Alert.alert("Recuperar senha", error instanceof Error ? error.message : "Não foi possível continuar.");
+    }
   }
 
   return (
@@ -61,14 +79,14 @@ export default function Login() {
               <Text style={styles.linkText}>Não tem conta? <Text style={styles.linkStrong}>Criar conta</Text></Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => Alert.alert("Recuperar senha", "A recuperação por e-mail será habilitada no Supabase em uma próxima etapa.")}
+              onPress={resetPassword}
               style={styles.linkBtn}
               testID="login-forgot-password"
             >
               <Text style={styles.linkStrong}>Esqueci minha senha</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => router.push("/driver/partner-signup")}
+              onPress={() => router.push({ pathname: "/auth/signup", params: { partner: "true" } })}
               style={styles.partnerBtn}
               testID="login-driver-partner"
             >

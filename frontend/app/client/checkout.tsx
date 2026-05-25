@@ -13,6 +13,7 @@ import { orderStore, generateCode, generateId } from "@/src/data/orderStore";
 import { paymentService } from "@/src/services/paymentService";
 import { authService } from "@/src/services/authService";
 import { marketingService } from "@/src/services/marketingService";
+import { USE_SUPABASE } from "@/src/config/runtime";
 
 const PLATFORM_FEE_RATE = 0.07;
 
@@ -62,13 +63,17 @@ export default function Checkout() {
 
   async function applyCoupon() {
     const code = couponInput.trim().toUpperCase();
-    const found = await marketingService.getCoupon(code);
-    if (!found) {
-      Alert.alert("Cupom inválido", "Esse cupom não existe no modo local.");
-      return;
+    try {
+      const found = await marketingService.getCoupon(code);
+      if (!found) {
+        Alert.alert("Cupom inválido", "Esse cupom não existe ou não está ativo.");
+        return;
+      }
+      setAppliedCoupon(found);
+      Alert.alert("Cupom aplicado", `${found.code} • ${found.description}`);
+    } catch (error) {
+      Alert.alert("Não foi possível aplicar cupom", error instanceof Error ? error.message : "Tente novamente.");
     }
-    setAppliedCoupon(found);
-    Alert.alert("Cupom aplicado", `${found.code} • ${found.description}`);
   }
 
   async function pay() {
@@ -78,8 +83,9 @@ export default function Checkout() {
       return;
     }
     setPaying(true);
-    const itemsText = items.map((item) => `${item.quantity}x ${item.name} - ${money(item.total)}`).join("\n");
-    const draft: Order = {
+    try {
+      const itemsText = items.map((item) => `${item.quantity}x ${item.name} - ${money(item.total)}`).join("\n");
+      const draft: Order = {
       id: generateId(),
       clientId: client.id,
       storeId: String(p.storeId ?? ""),
@@ -104,14 +110,18 @@ export default function Checkout() {
       goodsPhotoSent: false,
       chat: [],
       paid: false,
-    };
-    const intent = await paymentService.createPaymentIntent(draft);
-    await new Promise((r) => setTimeout(r, 400));
-    await paymentService.markPaymentAsApproved(intent);
-    const order = { ...draft, paid: true };
-    await orderStore.create(order);
-    setPaying(false);
-    router.replace(`/client/tracking/${order.id}`);
+      };
+      const intent = await paymentService.createPaymentIntent(draft);
+      await new Promise((r) => setTimeout(r, 400));
+      await paymentService.markPaymentAsApproved(intent);
+      const order = { ...draft, paid: true };
+      await orderStore.create(order);
+      router.replace(`/client/tracking/${order.id}`);
+    } catch (error) {
+      Alert.alert("Pedido não concluído", error instanceof Error ? error.message : "Tente novamente.");
+    } finally {
+      setPaying(false);
+    }
   }
 
   const rows = [
@@ -150,7 +160,7 @@ export default function Checkout() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.couponLabel}>Cupom local</Text>
+          <Text style={styles.couponLabel}>Cupom</Text>
           <View style={styles.couponRow}>
             <TextInput
               value={couponInput}
@@ -176,7 +186,7 @@ export default function Checkout() {
         <View style={styles.securityBox}>
           <Ionicons name="lock-closed" size={18} color={colors.primary} />
           <Text style={styles.securityText}>
-            Pagamento simulado e salvo localmente. Nenhuma API externa será chamada.
+            Pagamento simulado. {USE_SUPABASE ? "O pedido será salvo na sua conta." : "O pedido será salvo localmente."} Nenhuma API de pagamento será chamada.
           </Text>
         </View>
 

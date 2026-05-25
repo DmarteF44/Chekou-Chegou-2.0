@@ -86,6 +86,7 @@ async function ensureSeed() {
 
 function mapProfile(row: any): User {
   const driverStatus = row.driver_status ?? (row.is_blocked ? "blocked" : "none");
+  const wallet = Array.isArray(row.driver_wallets) ? row.driver_wallets[0] : row.driver_wallets;
   return {
     id: row.id,
     name: row.name ?? "Cliente",
@@ -94,7 +95,7 @@ function mapProfile(row: any): User {
     role: row.role ?? "client",
     driverStatus: row.is_blocked ? "blocked" : driverStatus,
     driverLevel: row.driver_level ?? 1,
-    operationalLimit: row.operational_limit ?? undefined,
+    operationalLimit: wallet?.operational_limit === undefined ? undefined : Number(wallet.operational_limit),
     createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
   };
 }
@@ -103,7 +104,7 @@ async function getSupabaseProfile(userId: string): Promise<User | null> {
   if (!supabase) return null;
   const { data, error } = await supabase
     .from("profiles")
-    .select("*")
+    .select("*, driver_wallets(operational_limit)")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw new Error(friendlySupabaseError(error, "Não foi possível carregar seu perfil."));
@@ -118,7 +119,7 @@ export const authService = {
 
   async getAllUsers(): Promise<User[]> {
     if (USE_SUPABASE && supabase) {
-      const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("profiles").select("*, driver_wallets(operational_limit)").order("created_at", { ascending: false });
       if (error) throw new Error(friendlySupabaseError(error, "Não foi possível listar usuários."));
       return (data ?? []).map(mapProfile);
     }
@@ -142,6 +143,10 @@ export const authService = {
       });
       if (error) return null;
       const profile = data.user ? await getSupabaseProfile(data.user.id) : null;
+      if (!profile) {
+        await supabase.auth.signOut();
+        throw new Error("Perfil não encontrado. Aplique a migration do Supabase antes de entrar.");
+      }
       listeners.forEach((l) => l());
       return profile;
     }
@@ -168,6 +173,17 @@ export const authService = {
         },
       });
       if (error || !data.user) return null;
+      if (!data.session) {
+        return {
+          id: data.user.id,
+          name: input.name.trim(),
+          email: input.email.trim(),
+          phone: input.phone.trim(),
+          role: "client",
+          driverStatus: "none",
+          createdAt: Date.now(),
+        };
+      }
       const profile = await getSupabaseProfile(data.user.id);
       listeners.forEach((l) => l());
       return profile ?? {
@@ -225,6 +241,15 @@ export const authService = {
     listeners.forEach((l) => l());
   },
 
+  async resetPassword(email: string): Promise<void> {
+    if (USE_SUPABASE && supabase) {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível enviar o e-mail de recuperação."));
+      return;
+    }
+    throw new Error("Recuperação de senha disponível apenas quando o Supabase estiver configurado.");
+  },
+
   async update(id: string, patch: Partial<User>): Promise<User | undefined> {
     if (USE_SUPABASE && supabase) {
       const next: Record<string, unknown> = {};
@@ -236,10 +261,23 @@ export const authService = {
       if (patch.driverLevel !== undefined) next.driver_level = patch.driverLevel;
       if (patch.driverStatus === "blocked") next.is_blocked = true;
       if (patch.driverStatus === "approved" || patch.driverStatus === "none") next.is_blocked = false;
-      const { data, error } = await supabase.from("profiles").update(next).eq("id", id).select("*").maybeSingle();
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível atualizar usuário."));
+      let updated: any = null;
+      if (Object.keys(next).length > 0) {
+        const { data, error } = await supabase.from("profiles").update(next).eq("id", id).select("*, driver_wallets(operational_limit)").maybeSingle();
+        if (error) throw new Error(friendlySupabaseError(error, "Não foi possível atualizar usuário."));
+        updated = data;
+      }
+      if (patch.operationalLimit !== undefined) {
+        const { error: walletError } = await supabase.from("driver_wallets").upsert({
+          driver_id: id,
+          operational_limit: Math.max(0, patch.operationalLimit),
+        }, { onConflict: "driver_id" });
+        if (walletError) throw new Error(friendlySupabaseError(walletError, "Não foi possível alterar o limite operacional."));
+        if (updated) updated.driver_wallets = [{ operational_limit: Math.max(0, patch.operationalLimit) }];
+      }
       listeners.forEach((l) => l());
-      return data ? mapProfile(data) : undefined;
+      if (updated) return mapProfile(updated);
+      return (await getSupabaseProfile(id)) ?? undefined;
     }
     const users = await load();
     const idx = users.findIndex((u) => u.id === id);

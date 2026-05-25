@@ -3,16 +3,18 @@ import {
   View, Text, StyleSheet, TextInput, ScrollView, Alert,
   KeyboardAvoidingView, Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
 import { Header } from "@/src/components/Header";
 import { Button } from "@/src/components/Button";
 import { DemoNotice } from "@/src/components/DemoNotice";
 import { authService } from "@/src/services/authService";
+import { USE_SUPABASE } from "@/src/config/runtime";
 
 export default function Signup() {
   const router = useRouter();
+  const { partner } = useLocalSearchParams<{ partner?: string }>();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -25,13 +27,24 @@ export default function Signup() {
       return;
     }
     setLoading(true);
-    const u = await authService.signup({ name, email, phone, password: pw });
-    setLoading(false);
-    if (!u) {
-      Alert.alert("Erro", "Já existe um cadastro com este e-mail.");
-      return;
+    try {
+      const u = await authService.signup({ name, email, phone, password: pw });
+      if (!u) {
+        Alert.alert("Erro", "Não foi possível cadastrar. Verifique se o e-mail já está em uso.");
+        return;
+      }
+      const session = await authService.getSession();
+      if (USE_SUPABASE && !session) {
+        Alert.alert("Confirme seu e-mail", "Cadastro criado. Confirme seu e-mail e depois entre para continuar.");
+        router.replace("/auth/login");
+        return;
+      }
+      router.replace(partner === "true" ? "/driver/partner-signup" : "/");
+    } catch (error) {
+      Alert.alert("Erro no cadastro", error instanceof Error ? error.message : "Tente novamente.");
+    } finally {
+      setLoading(false);
     }
-    router.replace("/");
   }
 
   return (

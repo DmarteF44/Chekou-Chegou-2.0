@@ -25,13 +25,19 @@ export default function StoreOrder() {
   const [customValue, setCustomValue] = useState("");
   const [notes, setNotes] = useState("");
   const [search, setSearch] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
-      const storeId = String(id ?? "");
-      const s = await catalogService.getStore(storeId);
-      setStore(s ?? null);
-      setProducts(await catalogService.listProducts({ storeId, activeOnly: true }));
+      try {
+        const storeId = String(id ?? "");
+        const s = await catalogService.getStore(storeId);
+        setStore(s ?? null);
+        setProducts(await catalogService.listProducts({ storeId, activeOnly: true }));
+        setLoadError("");
+      } catch (reason) {
+        setLoadError(reason instanceof Error ? reason.message : "Catálogo temporariamente indisponível.");
+      }
     };
     refresh();
     return catalogService.subscribe(refresh);
@@ -115,7 +121,7 @@ export default function StoreOrder() {
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <Header title="Criar Pedido" />
         <View style={{ padding: spacing.md }}>
-          <Text>Estabelecimento não encontrado.</Text>
+          <Text>{loadError || "Estabelecimento não encontrado."}</Text>
         </View>
       </SafeAreaView>
     );

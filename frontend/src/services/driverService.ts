@@ -63,7 +63,6 @@ export const driverService = {
         submitted_at: new Date(app.submittedAt).toISOString(),
       });
       if (error) throw new Error(friendlySupabaseError(error, "Não foi possível enviar cadastro de entregador."));
-      await authService.update(app.userId, { driverStatus: "pending" });
       return;
     }
     const list = await loadApps();

@@ -2,12 +2,13 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontSize, radius, spacing } from "@/src/theme/colors";
+import { USE_SUPABASE } from "@/src/config/runtime";
 
 export function DemoNotice({ compact = false }: { compact?: boolean }) {
   return (
     <View style={[styles.wrap, compact && styles.compact]} testID="demo-local-notice">
-      <Ionicons name="phone-portrait-outline" size={14} color={colors.primaryDark} />
-      <Text style={styles.text}>Versão demonstrativa local</Text>
+      <Ionicons name={USE_SUPABASE ? "cloud-done-outline" : "phone-portrait-outline"} size={14} color={colors.primaryDark} />
+      <Text style={styles.text}>{USE_SUPABASE ? "Dados conectados - pagamento simulado" : "Versão demonstrativa local"}</Text>
     </View>
   );
 }

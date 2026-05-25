@@ -33,7 +33,15 @@ values
   ((select id from stores where slug = 'eletronicos-jatai'), 'Carregador Turbo USB-C', 'Eletrônicos', 'Carregadores', 49.90, null, true, true, null),
   ((select id from stores where slug = 'eletronicos-jatai'), 'Fone de ouvido P2', 'Eletrônicos', 'Fones', 29.90, null, true, true, null),
   ((select id from stores where slug = 'eletronicos-jatai'), 'Película de vidro', 'Eletrônicos', 'Acessórios', 15.00, null, true, true, null),
-  ((select id from stores where slug = 'eletronicos-jatai'), 'Mouse sem fio', 'Eletrônicos', 'Informática', 39.90, null, true, true, null);
+  ((select id from stores where slug = 'eletronicos-jatai'), 'Mouse sem fio', 'Eletrônicos', 'Informática', 39.90, null, true, true, null)
+on conflict (establishment_id, name) do update set
+  branch = excluded.branch,
+  category = excluded.category,
+  price = excluded.price,
+  promo_price = excluded.promo_price,
+  active = excluded.active,
+  confirm_in_store = excluded.confirm_in_store,
+  notes = excluded.notes;
 
 insert into public.coupons (code, description, discount, type, active)
 values

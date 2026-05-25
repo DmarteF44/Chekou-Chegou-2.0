@@ -67,8 +67,12 @@ export default function DriverOrder() {
       Alert.alert("Limite operacional", check.reason ?? "Você não pode aceitar este pedido.");
       return;
     }
-    await orderStore.update(order!.id, { driverId: me.id, status: "Entregador aceitou" });
-    Alert.alert("Pedido aceito!", "Siga ao estabelecimento.");
+    try {
+      await orderStore.update(order!.id, { driverId: me.id, status: "Entregador aceitou" });
+      Alert.alert("Pedido aceito!", "Siga ao estabelecimento.");
+    } catch (error) {
+      Alert.alert("Não foi possível aceitar", error instanceof Error ? error.message : "Tente novamente.");
+    }
   }
 
   async function nextStatus() {
@@ -76,7 +80,11 @@ export default function DriverOrder() {
     if (idx < 0 || idx >= ORDER_STATUSES.length - 1) return;
     const candidate = ORDER_STATUSES[idx + 1];
     const next: OrderStatus = candidate === "Aguardando complemento do cliente" ? "A caminho do cliente" : candidate;
-    await orderStore.setStatus(order!.id, next);
+    try {
+      await orderStore.setStatus(order!.id, next);
+    } catch (error) {
+      Alert.alert("Não foi possível atualizar", error instanceof Error ? error.message : "Tente novamente.");
+    }
   }
 
   async function saveActualValue() {
@@ -87,23 +95,39 @@ export default function DriverOrder() {
     }
     const limit = order!.authorizedPurchaseLimit ?? order!.estimatedValue + order!.safetyMargin;
     if (v > limit) {
-      await orderStore.update(order!.id, { actualValue: v, status: "Aguardando complemento do cliente" });
-      Alert.alert("Complemento necessário", `Valor real ${money(v)} ultrapassa o limite autorizado de ${money(limit)}.`);
+      try {
+        await orderStore.update(order!.id, { actualValue: v, status: "Aguardando complemento do cliente" });
+        Alert.alert("Complemento necessário", `Valor real ${money(v)} ultrapassa o limite autorizado de ${money(limit)}.`);
+      } catch (error) {
+        Alert.alert("Não foi possível salvar", error instanceof Error ? error.message : "Tente novamente.");
+      }
       return;
     }
     const nextPatch: Partial<Order> = { actualValue: v };
     if (order!.status === "Aguardando complemento do cliente") nextPatch.status = "Comprando produtos";
-    await orderStore.update(order!.id, nextPatch);
-    Alert.alert("Valor salvo!", `Compra real: ${money(v)}`);
+    try {
+      await orderStore.update(order!.id, nextPatch);
+      Alert.alert("Valor salvo!", `Compra real: ${money(v)}`);
+    } catch (error) {
+      Alert.alert("Não foi possível salvar", error instanceof Error ? error.message : "Tente novamente.");
+    }
   }
 
   async function sendInvoice() {
-    await orderStore.update(order!.id, { invoicePhotoSent: true });
-    Alert.alert("Nota fiscal enviada", "Foto da nota fiscal compartilhada com o cliente (simulado).");
+    try {
+      await orderStore.update(order!.id, { invoicePhotoSent: true });
+      Alert.alert("Nota fiscal enviada", "Foto da nota fiscal compartilhada com o cliente (simulado).");
+    } catch (error) {
+      Alert.alert("Não foi possível enviar", error instanceof Error ? error.message : "Tente novamente.");
+    }
   }
   async function sendGoods() {
-    await orderStore.update(order!.id, { goodsPhotoSent: true });
-    Alert.alert("Mercadorias enviadas", "Foto das mercadorias compartilhada com o cliente (simulado).");
+    try {
+      await orderStore.update(order!.id, { goodsPhotoSent: true });
+      Alert.alert("Mercadorias enviadas", "Foto das mercadorias compartilhada com o cliente (simulado).");
+    } catch (error) {
+      Alert.alert("Não foi possível enviar", error instanceof Error ? error.message : "Tente novamente.");
+    }
   }
 
   async function confirmDelivery() {
@@ -115,10 +139,14 @@ export default function DriverOrder() {
       Alert.alert("Aguardando complemento", "Finalize somente após o cliente autorizar o complemento.");
       return;
     }
-    await orderStore.setStatus(order!.id, "Entregue");
-    // Navigate FIRST (Alert per-button onPress doesn't fire reliably on react-native-web).
-    router.replace("/driver/home");
-    Alert.alert("Entrega concluída!", "Taxa de entrega liberada para seu saldo.");
+    try {
+      await orderStore.completeDelivery(order!.id, codeInput.trim());
+      // Navigate FIRST (Alert per-button onPress doesn't fire reliably on react-native-web).
+      router.replace("/driver/home");
+      Alert.alert("Entrega concluída!", "Taxa de entrega liberada para seu saldo.");
+    } catch (error) {
+      Alert.alert("Não foi possível concluir", error instanceof Error ? error.message : "Tente novamente.");
+    }
   }
 
   const nextLabel = (() => {

@@ -27,15 +27,25 @@ export default function ClientHome() {
   const [stores, setStores] = useState<Store[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<StoreBranch>("Mercado");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
-      const session = await authService.getSession();
-      const all = await orderStore.getAll();
-      setActiveOrders(all.filter((o) => o.clientId === session?.id && o.status !== "Entregue" && o.status !== "Cancelado"));
-      setMe(session);
-      setStores(await catalogService.listStores({ activeOnly: true }));
-      setPromotions(await marketingService.listPromotions({ activeOnly: true }));
+      try {
+        const session = await authService.getSession();
+        if (!session) {
+          router.replace("/auth/login");
+          return;
+        }
+        const all = await orderStore.getAll();
+        setActiveOrders(all.filter((o) => o.clientId === session.id && o.status !== "Entregue" && o.status !== "Cancelado"));
+        setMe(session);
+        setStores(await catalogService.listStores({ activeOnly: true }));
+        setPromotions(await marketingService.listPromotions({ activeOnly: true }));
+        setError("");
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "Dados temporariamente indisponíveis.");
+      }
     };
     refresh();
     const a = orderStore.subscribe(refresh);
@@ -43,7 +53,7 @@ export default function ClientHome() {
     const c = authService.subscribe(refresh);
     const d = marketingService.subscribe(refresh);
     return () => { a(); b(); c(); d(); };
-  }, []);
+  }, [router]);
 
   async function logout() {
     await authService.logout();
@@ -77,6 +87,11 @@ export default function ClientHome() {
         <View style={styles.noticeWrap}>
           <DemoNotice />
         </View>
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
 
         {/* Active order banner */}
         {activeOrders.length > 0 && (
@@ -239,6 +254,8 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   noticeWrap: { paddingHorizontal: spacing.md, marginBottom: spacing.sm },
+  errorBox: { marginHorizontal: spacing.md, marginBottom: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.errorSoft },
+  errorText: { color: colors.error, fontSize: fontSize.small, fontWeight: "700" },
   activeBanner: {
     marginHorizontal: spacing.md, padding: spacing.md, borderRadius: radius.lg,
     backgroundColor: colors.primary, flexDirection: "row", alignItems: "center",
