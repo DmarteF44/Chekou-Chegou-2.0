@@ -42,8 +42,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "a5d769d5-56bd-4095-bd5d-dce76a63a52b"
+        "projectId": "e3c8ba95-c730-4658-bc88-21681fc1b0c8"
       }
-    }
+    },
+    "owner": "dmartef44"
   }
 }
