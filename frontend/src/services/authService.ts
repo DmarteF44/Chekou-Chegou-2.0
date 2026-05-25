@@ -2,6 +2,7 @@
 import { storage } from "@/src/utils/storage";
 import { USE_SUPABASE, friendlySupabaseError, isSupabaseUnavailable } from "@/src/config/runtime";
 import { supabase } from "@/src/lib/supabase";
+import { withTimeout } from "@/src/utils/withTimeout";
 
 export type Role = "client" | "driver" | "admin" | "super_admin";
 export type DriverStatus = "none" | "pending" | "approved" | "rejected" | "blocked";
@@ -23,6 +24,9 @@ const USERS_KEY = "chekou_users_v1";
 const SESSION_KEY = "chekou_session_v1";
 const SEED_KEY = "chekou_seed_v1";
 const SEED_VERSION = "2";
+export const AUTH_BOOT_TIMEOUT_MS = 6000;
+const AUTH_ACTION_TIMEOUT_MS = 8000;
+const AUTH_CLEANUP_TIMEOUT_MS = 1500;
 
 const SEED_USERS: User[] = [
   {
@@ -106,13 +110,43 @@ function mapProfile(row: any): User {
 
 async function getSupabaseProfile(userId: string): Promise<User | null> {
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*, driver_wallets(operational_limit)")
-    .eq("id", userId)
-    .maybeSingle();
+  const { data, error } = await withTimeout(
+    Promise.resolve(
+      supabase
+        .from("profiles")
+        .select("*, driver_wallets(operational_limit)")
+        .eq("id", userId)
+        .maybeSingle(),
+    ),
+    AUTH_BOOT_TIMEOUT_MS,
+    "Tempo limite ao carregar perfil remoto.",
+  );
   if (error) throw new Error(friendlySupabaseError(error, "Não foi possível carregar seu perfil."));
   return data ? mapProfile(data) : null;
+}
+
+async function getLocalSession(): Promise<User | null> {
+  const id = await storage.getItem<string>(SESSION_KEY, "");
+  if (!id) return null;
+  const users = await load();
+  return users.find((user) => user.id === id) ?? null;
+}
+
+function warnLocalFallback(context: string) {
+  console.warn(`[auth] ${context}; usando sessão local quando disponível.`);
+}
+
+async function clearInvalidSupabaseSession() {
+  if (!supabase) return;
+  try {
+    await withTimeout(
+      supabase.auth.signOut({ scope: "local" }),
+      AUTH_CLEANUP_TIMEOUT_MS,
+      "Tempo limite ao limpar sessão remota.",
+    );
+  } catch {
+    console.warn("[auth] Sessão remota inválida; limpeza local não concluiu no prazo.");
+  }
 }
 
 export const authService = {
@@ -147,27 +181,29 @@ export const authService = {
 
   async login(email: string, password: string): Promise<User | null> {
     if (USE_SUPABASE && supabase) {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-      if (!error) {
-        try {
+      try {
+        const { data, error } = await withTimeout(
+          supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+          }),
+          AUTH_ACTION_TIMEOUT_MS,
+          "Tempo limite ao autenticar no Supabase.",
+        );
+        if (!error) {
           const profile = data.user ? await getSupabaseProfile(data.user.id) : null;
           if (!profile) {
-            await supabase.auth.signOut();
+            await clearInvalidSupabaseSession();
             throw new Error("Perfil não encontrado. Aplique a migration do Supabase antes de entrar.");
           }
           listeners.forEach((l) => l());
           return profile;
-        } catch (profileError) {
-          if (!isSupabaseUnavailable(profileError)) throw profileError;
-          console.warn("Supabase indisponível ao carregar sessão; tentando login local.", profileError);
         }
-      } else if (!isSupabaseUnavailable(error)) {
-        return null;
-      } else {
-        console.warn("Supabase indisponível no login; tentando modo local.", error);
+        if (!isSupabaseUnavailable(error)) return null;
+        warnLocalFallback("Supabase indisponível no login");
+      } catch (error) {
+        if (!isSupabaseUnavailable(error)) throw error;
+        warnLocalFallback("Login remoto excedeu o tempo esperado");
       }
     }
     const users = await load();
@@ -182,19 +218,36 @@ export const authService = {
 
   async signup(input: { name: string; email: string; phone: string; password: string }): Promise<User | null> {
     if (USE_SUPABASE && supabase) {
-      const { data, error } = await supabase.auth.signUp({
-        email: input.email.trim(),
-        password: input.password,
-        options: {
-          data: {
-            name: input.name.trim(),
-            phone: input.phone.trim(),
-          },
-        },
-      });
-      if (!error && data.user) {
-        if (!data.session) {
-          return {
+      try {
+        const { data, error } = await withTimeout(
+          supabase.auth.signUp({
+            email: input.email.trim(),
+            password: input.password,
+            options: {
+              data: {
+                name: input.name.trim(),
+                phone: input.phone.trim(),
+              },
+            },
+          }),
+          AUTH_ACTION_TIMEOUT_MS,
+          "Tempo limite ao criar conta no Supabase.",
+        );
+        if (!error && data.user) {
+          if (!data.session) {
+            return {
+              id: data.user.id,
+              name: input.name.trim(),
+              email: input.email.trim(),
+              phone: input.phone.trim(),
+              role: "client",
+              driverStatus: "none",
+              createdAt: Date.now(),
+            };
+          }
+          const profile = await getSupabaseProfile(data.user.id);
+          listeners.forEach((l) => l());
+          return profile ?? {
             id: data.user.id,
             name: input.name.trim(),
             email: input.email.trim(),
@@ -204,20 +257,12 @@ export const authService = {
             createdAt: Date.now(),
           };
         }
-        const profile = await getSupabaseProfile(data.user.id);
-        listeners.forEach((l) => l());
-        return profile ?? {
-          id: data.user.id,
-          name: input.name.trim(),
-          email: input.email.trim(),
-          phone: input.phone.trim(),
-          role: "client",
-          driverStatus: "none",
-          createdAt: Date.now(),
-        };
+        if (!isSupabaseUnavailable(error)) return null;
+        warnLocalFallback("Supabase indisponível no cadastro");
+      } catch (error) {
+        if (!isSupabaseUnavailable(error)) throw error;
+        warnLocalFallback("Cadastro remoto excedeu o tempo esperado");
       }
-      if (!isSupabaseUnavailable(error)) return null;
-      console.warn("Supabase indisponível no cadastro; usando modo local.", error);
     }
     const users = await load();
     if (users.find((u) => u.email.toLowerCase() === input.email.trim().toLowerCase())) return null;
@@ -239,34 +284,54 @@ export const authService = {
   },
 
   async getSession(): Promise<User | null> {
-    if (USE_SUPABASE && supabase) {
-      const { data, error } = await supabase.auth.getSession();
-      if (!error && data.session?.user) {
-        try {
-          return await getSupabaseProfile(data.session.user.id);
-        } catch (profileError) {
-          if (!isSupabaseUnavailable(profileError)) return null;
-          console.warn("Supabase indisponível ao restaurar sessão; tentando sessão local.", profileError);
+    if (!(USE_SUPABASE && supabase)) return getLocalSession();
+
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.getSession(),
+        AUTH_BOOT_TIMEOUT_MS,
+        "Tempo limite ao restaurar sessão remota.",
+      );
+      if (error) {
+        if (isSupabaseUnavailable(error)) {
+          warnLocalFallback("Supabase indisponível ao restaurar sessão");
+          return getLocalSession();
         }
-      } else if (!error) {
+        await clearInvalidSupabaseSession();
         return null;
-      } else if (!isSupabaseUnavailable(error)) {
-        return null;
-      } else {
-        console.warn("Supabase indisponível ao restaurar sessão; tentando sessão local.", error);
       }
+      if (!data.session?.user) return null;
+
+      try {
+        const profile = await getSupabaseProfile(data.session.user.id);
+        if (profile) return profile;
+        await clearInvalidSupabaseSession();
+        return null;
+      } catch (profileError) {
+        if (isSupabaseUnavailable(profileError)) {
+          warnLocalFallback("Perfil remoto indisponível na restauração");
+          return getLocalSession();
+        }
+        await clearInvalidSupabaseSession();
+        return null;
+      }
+    } catch (error) {
+      if (isSupabaseUnavailable(error)) {
+        warnLocalFallback("Restauração remota excedeu o tempo esperado");
+        return getLocalSession();
+      }
+      await clearInvalidSupabaseSession();
+      return null;
     }
-    const id = await storage.getItem<string>(SESSION_KEY, "");
-    if (!id) return null;
-    const u = await this.getById(id);
-    return u ?? null;
   },
 
   async logout(): Promise<void> {
     if (USE_SUPABASE && supabase) {
-      await supabase.auth.signOut();
-      listeners.forEach((l) => l());
-      return;
+      try {
+        await withTimeout(supabase.auth.signOut(), AUTH_ACTION_TIMEOUT_MS, "Tempo limite ao sair da conta.");
+      } catch {
+        console.warn("[auth] Logout remoto não concluiu no prazo; removendo sessão local.");
+      }
     }
     await storage.removeItem(SESSION_KEY);
     listeners.forEach((l) => l());
@@ -274,7 +339,11 @@ export const authService = {
 
   async resetPassword(email: string): Promise<void> {
     if (USE_SUPABASE && supabase) {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+      const { error } = await withTimeout(
+        supabase.auth.resetPasswordForEmail(email.trim()),
+        AUTH_ACTION_TIMEOUT_MS,
+        "Tempo limite ao solicitar recuperação de senha.",
+      );
       if (error) throw new Error(friendlySupabaseError(error, "Não foi possível enviar o e-mail de recuperação."));
       return;
     }

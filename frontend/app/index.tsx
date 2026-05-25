@@ -2,8 +2,11 @@ import React, { useEffect } from "react";
 import { View, StyleSheet, ActivityIndicator, Text } from "react-native";
 import { useRouter } from "expo-router";
 import { colors, fontSize, spacing } from "@/src/theme/colors";
-import { authService } from "@/src/services/authService";
+import { AUTH_BOOT_TIMEOUT_MS, authService } from "@/src/services/authService";
 import { DemoNotice } from "@/src/components/DemoNotice";
+import { withTimeout } from "@/src/utils/withTimeout";
+
+const INDEX_BOOT_TIMEOUT_MS = AUTH_BOOT_TIMEOUT_MS + 1000;
 
 // Auth gate / splash router.
 // Decides where to land based on session state and user role/driverStatus.
@@ -11,28 +14,47 @@ export default function Index() {
   const router = useRouter();
 
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+    let navigated = false;
+
+    const navigateOnce = (route: "/auth/login" | "/admin" | "/driver/home" | "/driver/blocked" | "/driver/pending" | "/client/home") => {
+      if (cancelled || navigated) return;
+      navigated = true;
+      router.replace(route);
+    };
+
+    async function bootstrap() {
       try {
-        const u = await authService.getSession();
+        const u = await withTimeout(
+          authService.getSession(),
+          INDEX_BOOT_TIMEOUT_MS,
+          "Tempo limite ao iniciar sessão.",
+        );
         if (!u) {
-          router.replace("/auth/login");
+          navigateOnce("/auth/login");
           return;
         }
         if (u.role === "admin" || u.role === "super_admin") {
-          router.replace("/admin");
+          navigateOnce("/admin");
           return;
         }
         if (u.role === "driver") {
-          if (u.driverStatus === "approved") router.replace("/driver/home");
-          else if (u.driverStatus === "blocked") router.replace("/driver/blocked");
-          else router.replace("/driver/pending");
+          if (u.driverStatus === "approved") navigateOnce("/driver/home");
+          else if (u.driverStatus === "blocked") navigateOnce("/driver/blocked");
+          else navigateOnce("/driver/pending");
           return;
         }
-        router.replace("/client/home");
+        navigateOnce("/client/home");
       } catch {
-        router.replace("/auth/login");
+        console.warn("[bootstrap] Sessão inicial indisponível no prazo; abrindo login.");
+        navigateOnce("/auth/login");
       }
-    })();
+    }
+
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   return (

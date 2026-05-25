@@ -44,5 +44,5 @@ export function friendlySupabaseError(error: unknown, fallback = "N√£o foi poss√
 
 export function isSupabaseUnavailable(error: unknown): boolean {
   const message = friendlySupabaseError(error).toLowerCase();
-  return /network|fetch|timeout|timed out|failed to load|unable to resolve|api key|apikey|invalid.*key|schema cache|could not find.*table|relation .* does not exist/.test(message);
+  return /network|fetch|timeout|timed out|tempo limite|failed to load|unable to resolve|api key|apikey|invalid.*key|schema cache|could not find.*table|relation .* does not exist/.test(message);
 }
