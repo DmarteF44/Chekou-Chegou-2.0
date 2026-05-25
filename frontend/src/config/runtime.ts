@@ -3,12 +3,26 @@ const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ?? 
 
 export const FORCE_LOCAL_MODE = false;
 
+function isValidSupabaseUrl(value: string): boolean {
+  return /^https?:\/\/[^\s]+$/i.test(value);
+}
+
+const hasCompleteSupabaseEnv = Boolean(supabaseUrl && supabaseKey);
+const hasValidSupabaseEnv = hasCompleteSupabaseEnv && isValidSupabaseUrl(supabaseUrl);
+
 export const runtime = {
   supabaseUrl,
   supabaseKey,
-  hasSupabaseEnv: Boolean(supabaseUrl && supabaseKey),
+  hasSupabaseEnv: hasValidSupabaseEnv,
+  supabaseConfigError: !supabaseUrl && !supabaseKey
+    ? null
+    : !hasCompleteSupabaseEnv
+      ? "Configuração incompleta do Supabase. Usando modo local."
+      : !hasValidSupabaseEnv
+        ? "URL do Supabase inválida. Usando modo local."
+        : null,
   get USE_SUPABASE() {
-    return !FORCE_LOCAL_MODE && Boolean(supabaseUrl && supabaseKey);
+    return !FORCE_LOCAL_MODE && hasValidSupabaseEnv;
   },
 };
 
