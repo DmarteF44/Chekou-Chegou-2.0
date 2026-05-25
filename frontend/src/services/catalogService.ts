@@ -1,7 +1,7 @@
 // catalogService — establishments + products CRUD via AsyncStorage.
 import { storage } from "@/src/utils/storage";
 import { ESTABLISHMENTS as INITIAL_STORES, Establishment } from "@/src/data/mock";
-import { USE_SUPABASE, friendlySupabaseError } from "@/src/config/runtime";
+import { USE_SUPABASE, friendlySupabaseError, isSupabaseUnavailable } from "@/src/config/runtime";
 import { supabase } from "@/src/lib/supabase";
 
 export type StoreBranch = "Mercado" | "Farmácia" | "Eletrônicos" | "Outros";
@@ -126,13 +126,16 @@ function sanitizeStore(store: Store): Store {
 
 function sanitizeProduct(product: Product, store: Store): Product {
   const branch = getStoreBranch(store);
-  const promoPrice = typeof product.promoPrice === "number" && product.promoPrice >= 0 ? product.promoPrice : undefined;
+  const price = Math.max(0, Number(product.price) || 0);
+  const promoPrice = typeof product.promoPrice === "number" && product.promoPrice >= 0 && product.promoPrice <= price
+    ? product.promoPrice
+    : undefined;
   return {
     ...product,
     name: product.name.trim(),
     storeId: store.id,
     category: normalizeProductCategory(product.category, branch),
-    price: Math.max(0, Number(product.price) || 0),
+    price,
     promoPrice,
     imageUrl: product.imageUrl?.trim() || undefined,
     notes: product.notes?.trim(),
@@ -313,8 +316,9 @@ export const catalogService = {
       let query = supabase.from("establishments").select("*").order("name", { ascending: true });
       if (opts?.activeOnly) query = query.eq("active", true);
       const { data, error } = await query;
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível listar estabelecimentos."));
-      return (data ?? []).map(mapStore);
+      if (!error) return (data ?? []).map(mapStore);
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível listar estabelecimentos."));
+      console.warn("Supabase indisponível ao listar estabelecimentos; usando catálogo local.", error);
     }
     const all = await readStores();
     return opts?.activeOnly ? all.filter((s) => s.active) : all;
@@ -325,8 +329,9 @@ export const catalogService = {
       const { data, error } = isUuid(id)
         ? await base.eq("id", id).maybeSingle()
         : await base.eq("slug", id).maybeSingle();
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível carregar estabelecimento."));
-      return data ? mapStore(data) : undefined;
+      if (!error) return data ? mapStore(data) : undefined;
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível carregar estabelecimento."));
+      console.warn("Supabase indisponível ao carregar estabelecimento; usando catálogo local.", error);
     }
     const all = await readStores();
     return all.find((s) => s.id === id);
@@ -340,9 +345,12 @@ export const catalogService = {
         ? supabase.from("establishments").update(payload).eq("id", store.id)
         : supabase.from("establishments").insert(payload);
       const { error } = await query;
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível salvar estabelecimento."));
-      notify();
-      return;
+      if (!error) {
+        notify();
+        return;
+      }
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível salvar estabelecimento."));
+      console.warn("Supabase indisponível ao salvar estabelecimento; salvando localmente.", error);
     }
     const all = await readStores();
     const idx = all.findIndex((s) => s.id === store.id);
@@ -353,9 +361,12 @@ export const catalogService = {
   async deleteStore(id: string): Promise<void> {
     if (USE_SUPABASE && supabase) {
       const { error } = await supabase.from("establishments").delete().eq("id", id);
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível remover estabelecimento."));
-      notify();
-      return;
+      if (!error) {
+        notify();
+        return;
+      }
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível remover estabelecimento."));
+      console.warn("Supabase indisponível ao remover estabelecimento; removendo localmente.", error);
     }
     const all = (await readStores()).filter((s) => s.id !== id);
     await writeStores(all);
@@ -370,8 +381,9 @@ export const catalogService = {
       if (opts?.category) query = query.eq("category", opts.category);
       if (opts?.branch) query = query.eq("branch", opts.branch);
       const { data, error } = await query;
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível listar produtos."));
-      return (data ?? []).map(mapProduct);
+      if (!error) return (data ?? []).map(mapProduct);
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível listar produtos."));
+      console.warn("Supabase indisponível ao listar produtos; usando catálogo local.", error);
     }
     let all = await readProducts();
     if (opts?.storeId) all = all.filter((p) => p.storeId === opts.storeId);
@@ -388,6 +400,9 @@ export const catalogService = {
     if (!p.name?.trim()) throw new Error("Produto sem nome.");
     if (!p.storeId) throw new Error("Produto sem estabelecimento.");
     if (Number(p.price) < 0 || Number(p.promoPrice ?? 0) < 0) throw new Error("Preço inválido.");
+    if (p.promoPrice !== undefined && Number(p.promoPrice) > Number(p.price)) {
+      throw new Error("O preço promocional não pode superar o preço estimado.");
+    }
     if (USE_SUPABASE && supabase) {
       const store = await this.getStore(p.storeId);
       if (!store) throw new Error("Estabelecimento do produto não encontrado.");
@@ -396,9 +411,12 @@ export const catalogService = {
         ? supabase.from("products").update(payload).eq("id", p.id)
         : supabase.from("products").insert(payload);
       const { error } = await query;
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível salvar produto."));
-      notify();
-      return;
+      if (!error) {
+        notify();
+        return;
+      }
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível salvar produto."));
+      console.warn("Supabase indisponível ao salvar produto; salvando localmente.", error);
     }
     const stores = await readStores();
     const store = stores.find((s) => s.id === p.storeId);
@@ -412,9 +430,12 @@ export const catalogService = {
   async deleteProduct(id: string): Promise<void> {
     if (USE_SUPABASE && supabase) {
       const { error } = await supabase.from("products").delete().eq("id", id);
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível remover produto."));
-      notify();
-      return;
+      if (!error) {
+        notify();
+        return;
+      }
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível remover produto."));
+      console.warn("Supabase indisponível ao remover produto; removendo localmente.", error);
     }
     const all = (await readProducts()).filter((p) => p.id !== id);
     await writeProducts(all);

@@ -1,8 +1,9 @@
 // driverService — handles local partner applications, levels, and status changes.
 import { authService, User } from "./authService";
 import { storage } from "@/src/utils/storage";
-import { USE_SUPABASE, friendlySupabaseError } from "@/src/config/runtime";
+import { USE_SUPABASE, friendlySupabaseError, isSupabaseUnavailable } from "@/src/config/runtime";
 import { supabase } from "@/src/lib/supabase";
+import { settingsService } from "@/src/services/settingsService";
 
 export type DriverLevel = 1 | 2 | 3 | 4;
 
@@ -45,9 +46,13 @@ async function saveApps(list: DriverApplication[]) {
   await storage.setItem(APPS_KEY, JSON.stringify(list));
 }
 
+function isUuid(id?: string) {
+  return Boolean(id?.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i));
+}
+
 export const driverService = {
   async submitApplication(app: DriverApplication): Promise<void> {
-    if (USE_SUPABASE && supabase) {
+    if (USE_SUPABASE && supabase && isUuid(app.userId)) {
       const { error } = await supabase.from("driver_applications").insert({
         user_id: app.userId,
         full_name: app.fullName,
@@ -62,8 +67,9 @@ export const driverService = {
         accepted_terms: app.acceptedTerms,
         submitted_at: new Date(app.submittedAt).toISOString(),
       });
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível enviar cadastro de entregador."));
-      return;
+      if (!error) return;
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível enviar cadastro de entregador."));
+      console.warn("Supabase indisponível no cadastro de entregador; salvando localmente.", error);
     }
     const list = await loadApps();
     const idx = list.findIndex((a) => a.userId === app.userId);
@@ -73,7 +79,7 @@ export const driverService = {
   },
 
   async getApplication(userId: string): Promise<DriverApplication | undefined> {
-    if (USE_SUPABASE && supabase) {
+    if (USE_SUPABASE && supabase && isUuid(userId)) {
       const { data, error } = await supabase
         .from("driver_applications")
         .select("*")
@@ -81,8 +87,7 @@ export const driverService = {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível carregar cadastro de entregador."));
-      return data ? {
+      if (!error) return data ? {
         userId: data.user_id,
         fullName: data.full_name,
         cpf: data.cpf ?? "",
@@ -96,6 +101,8 @@ export const driverService = {
         acceptedTerms: data.accepted_terms ?? false,
         submittedAt: data.submitted_at ? new Date(data.submitted_at).getTime() : Date.now(),
       } : undefined;
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível carregar cadastro de entregador."));
+      console.warn("Supabase indisponível ao carregar cadastro de entregador; usando dados locais.", error);
     }
     const list = await loadApps();
     return list.find((a) => a.userId === userId);
@@ -104,8 +111,7 @@ export const driverService = {
   async getAllApplications(): Promise<DriverApplication[]> {
     if (USE_SUPABASE && supabase) {
       const { data, error } = await supabase.from("driver_applications").select("*").order("created_at", { ascending: false });
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível listar cadastros de entregador."));
-      return (data ?? []).map((item: any) => ({
+      if (!error) return (data ?? []).map((item: any) => ({
         userId: item.user_id,
         fullName: item.full_name,
         cpf: item.cpf ?? "",
@@ -119,12 +125,20 @@ export const driverService = {
         acceptedTerms: item.accepted_terms ?? false,
         submittedAt: item.submitted_at ? new Date(item.submitted_at).getTime() : Date.now(),
       }));
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível listar cadastros de entregador."));
+      console.warn("Supabase indisponível ao listar cadastros; usando dados locais.", error);
     }
     return loadApps();
   },
 
   async approve(userId: string): Promise<void> {
-    await authService.update(userId, { driverStatus: "approved", role: "driver", driverLevel: 1, operationalLimit: DRIVER_LEVELS[1].limit });
+    const settings = await settingsService.get();
+    await authService.update(userId, {
+      driverStatus: "approved",
+      role: "driver",
+      driverLevel: 1,
+      operationalLimit: settings.driverInitialLimitsByLevel["1"],
+    });
   },
 
   async reject(userId: string): Promise<void> {
@@ -140,7 +154,8 @@ export const driverService = {
   },
 
   async setLevel(userId: string, level: DriverLevel): Promise<void> {
-    await authService.update(userId, { driverLevel: level, operationalLimit: DRIVER_LEVELS[level].limit });
+    const settings = await settingsService.get();
+    await authService.update(userId, { driverLevel: level, operationalLimit: settings.driverInitialLimitsByLevel[String(level)] });
   },
 
   async setOperationalLimit(userId: string, limit: number): Promise<void> {

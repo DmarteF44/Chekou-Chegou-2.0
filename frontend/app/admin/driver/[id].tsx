@@ -28,26 +28,32 @@ export default function DriverDetail() {
   const [app, setApp] = useState<DriverApplication | null>(null);
   const [stats, setStats] = useState({ done: 0, cancelled: 0, balance: 0, pending: 0 });
   const [limitInput, setLimitInput] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
-      const session = await authService.getSession();
-      if (!session || (session.role !== "admin" && session.role !== "super_admin")) {
-        router.replace("/auth/login");
-        return;
+      try {
+        const session = await authService.getSession();
+        if (!session || (session.role !== "admin" && session.role !== "super_admin")) {
+          router.replace("/auth/login");
+          return;
+        }
+        const u = await authService.getById(id as string);
+        setUser(u ?? null);
+        setApp((await driverService.getApplication(id as string)) ?? null);
+        setLimitInput(String(u?.operationalLimit ?? ""));
+        const history = await orderService.driverHistory(id as string);
+        const active = await orderService.driverActive(id as string);
+        setStats({
+          done: history.length,
+          cancelled: 0,
+          balance: history.reduce((a, o) => a + o.deliveryFee, 0),
+          pending: active.reduce((a, o) => a + o.deliveryFee, 0),
+        });
+        setLoadError("");
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Não foi possível carregar entregador.");
       }
-      const u = await authService.getById(id as string);
-      setUser(u ?? null);
-      setApp((await driverService.getApplication(id as string)) ?? null);
-      setLimitInput(String(u?.operationalLimit ?? ""));
-      const history = await orderService.driverHistory(id as string);
-      const active = await orderService.driverActive(id as string);
-      setStats({
-        done: history.length,
-        cancelled: 0,
-        balance: history.reduce((a, o) => a + o.deliveryFee, 0),
-        pending: active.reduce((a, o) => a + o.deliveryFee, 0),
-      });
     };
     refresh();
     return authService.subscribe(refresh);
@@ -65,13 +71,20 @@ export default function DriverDetail() {
   const level = (user.driverLevel ?? 1) as DriverLevel;
   const levelInfo = DRIVER_LEVELS[level];
 
-  async function approve() { await driverService.approve(user!.id); Alert.alert("Aprovado!", "Motorista pode receber pedidos."); }
-  async function reject() { await driverService.reject(user!.id); Alert.alert("Reprovado", "Cadastro recusado."); }
-  async function block() { await driverService.block(user!.id); Alert.alert("Bloqueado"); }
-  async function unblock() { await driverService.unblock(user!.id); Alert.alert("Desbloqueado"); }
+  async function runAction(action: () => Promise<void>, success: string) {
+    try {
+      await action();
+      Alert.alert(success);
+    } catch (error) {
+      Alert.alert("Não foi possível atualizar", error instanceof Error ? error.message : "Tente novamente.");
+    }
+  }
+  async function approve() { await runAction(() => driverService.approve(user!.id), "Aprovado! Motorista pode receber pedidos."); }
+  async function reject() { await runAction(() => driverService.reject(user!.id), "Cadastro reprovado."); }
+  async function block() { await runAction(() => driverService.block(user!.id), "Motorista bloqueado."); }
+  async function unblock() { await runAction(() => driverService.unblock(user!.id), "Motorista desbloqueado."); }
   async function setLevel(l: DriverLevel) {
-    await driverService.setLevel(user!.id, l);
-    Alert.alert("Nível atualizado", `Novo nível: ${DRIVER_LEVELS[l].name}`);
+    await runAction(() => driverService.setLevel(user!.id, l), `Nível atualizado: ${DRIVER_LEVELS[l].name}`);
   }
   async function saveLimit() {
     const value = Number(limitInput.replace(",", "."));
@@ -79,8 +92,7 @@ export default function DriverDetail() {
       Alert.alert("Limite inválido", "Informe um valor numérico.");
       return;
     }
-    await driverService.setOperationalLimit(user!.id, value);
-    Alert.alert("Limite atualizado", money(value));
+    await runAction(() => driverService.setOperationalLimit(user!.id, value), `Limite atualizado: ${money(value)}`);
   }
 
   return (
@@ -88,6 +100,7 @@ export default function DriverDetail() {
       <Header title="Motorista" subtitle={user.name} />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        {loadError ? <Text style={styles.errorNotice}>{loadError}</Text> : null}
         <View style={styles.card}>
           <Text style={styles.h}>Dados do motorista</Text>
           <Row label="Nome" value={user.name} />
@@ -118,7 +131,7 @@ export default function DriverDetail() {
               <Text style={styles.levelName}>Nível {level} • {levelInfo.name}</Text>
               <Text style={styles.muted}>{levelInfo.description}</Text>
             </View>
-            <Text style={[styles.limit, { color: levelInfo.color }]}>até R$ {levelInfo.limit}</Text>
+            <Text style={[styles.limit, { color: levelInfo.color }]}>até {money(user.operationalLimit ?? levelInfo.limit)}</Text>
           </View>
           <View style={styles.levelRow}>
             {([1, 2, 3, 4] as DriverLevel[]).map((l) => (
@@ -205,4 +218,5 @@ const styles = StyleSheet.create({
   levelBtnText: { fontWeight: "800", color: colors.textSecondary },
   limitEditRow: { flexDirection: "row", gap: spacing.sm, alignItems: "center", marginTop: spacing.sm },
   limitInput: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm, color: colors.textPrimary, minHeight: 48 },
+  errorNotice: { backgroundColor: colors.errorSoft, color: colors.error, padding: spacing.sm, borderRadius: radius.md, fontSize: fontSize.small, fontWeight: "700" },
 });

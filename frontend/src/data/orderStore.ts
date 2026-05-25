@@ -1,6 +1,6 @@
 import { storage } from "@/src/utils/storage";
 import { Order, OrderStatus, ChatMessage } from "./mock";
-import { USE_SUPABASE, friendlySupabaseError } from "@/src/config/runtime";
+import { USE_SUPABASE, friendlySupabaseError, isSupabaseUnavailable } from "@/src/config/runtime";
 import { supabase } from "@/src/lib/supabase";
 
 const ORDERS_KEY = "chekou_orders_v1";
@@ -53,6 +53,7 @@ function mapOrder(row: any): Order {
     paid: row.paid ?? false,
     complementAmount: row.complement_amount === null || row.complement_amount === undefined ? undefined : Number(row.complement_amount),
     complementApprovedAt: row.complement_approved_at ? new Date(row.complement_approved_at).getTime() : undefined,
+    complementDeclinedAt: row.complement_declined_at ? new Date(row.complement_declined_at).getTime() : undefined,
   };
 }
 
@@ -90,6 +91,7 @@ function patchPayload(patch: Partial<Order>) {
   if (patch.authorizedPurchaseLimit !== undefined) next.authorized_purchase_limit = patch.authorizedPurchaseLimit;
   if (patch.complementAmount !== undefined) next.complement_amount = patch.complementAmount;
   if (patch.complementApprovedAt !== undefined) next.complement_approved_at = new Date(patch.complementApprovedAt).toISOString();
+  if (patch.complementDeclinedAt !== undefined) next.complement_declined_at = new Date(patch.complementDeclinedAt).toISOString();
   if (patch.total !== undefined) next.total = patch.total;
   if (patch.invoicePhotoSent !== undefined) next.invoice_photo_sent = patch.invoicePhotoSent;
   if (patch.goodsPhotoSent !== undefined) next.goods_photo_sent = patch.goodsPhotoSent;
@@ -134,20 +136,28 @@ export const orderStore = {
   },
 
   async getAll(): Promise<Order[]> {
-    if (USE_SUPABASE && supabase) return fetchOrders();
+    if (USE_SUPABASE && supabase) {
+      try {
+        return await fetchOrders();
+      } catch (error) {
+        if (!isSupabaseUnavailable(error)) throw error;
+        console.warn("Supabase indisponível ao listar pedidos; usando dados locais.", error);
+      }
+    }
     const list = await load();
     return [...list].sort((a, b) => b.createdAt - a.createdAt);
   },
 
   async getById(id: string): Promise<Order | undefined> {
-    if (USE_SUPABASE && supabase) {
+    if (USE_SUPABASE && supabase && isUuid(id)) {
       const { data, error } = await supabase
         .from("orders")
         .select("*, establishments(name), order_items(*)")
         .eq("id", id)
         .maybeSingle();
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível carregar pedido."));
-      return data ? mapOrder(data) : undefined;
+      if (!error) return data ? mapOrder(data) : undefined;
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível carregar pedido."));
+      console.warn("Supabase indisponível ao carregar pedido; usando dados locais.", error);
     }
     const list = await load();
     return list.find((o) => o.id === id);
@@ -159,43 +169,48 @@ export const orderStore = {
   },
 
   async getAvailable(): Promise<Order[]> {
-    if (USE_SUPABASE && supabase) {
-      return (await fetchOrders()).filter((o) => o.status === "Aguardando entregador" && !o.driverId);
-    }
-    const list = await load();
+    const list = await this.getAll();
     return list
       .filter((o) => o.status === "Aguardando entregador" && !o.driverId)
       .sort((a, b) => b.createdAt - a.createdAt);
   },
 
   async getDriverActive(driverId: string): Promise<Order[]> {
-    if (USE_SUPABASE && supabase) {
-      return (await fetchOrders()).filter((o) => o.driverId === driverId && o.status !== "Entregue" && o.status !== "Cancelado");
-    }
-    const list = await load();
+    const list = await this.getAll();
     return list
       .filter((o) => o.driverId === driverId && o.status !== "Entregue" && o.status !== "Cancelado")
       .sort((a, b) => b.createdAt - a.createdAt);
   },
 
   async getDriverHistory(driverId: string): Promise<Order[]> {
-    if (USE_SUPABASE && supabase) {
-      return (await fetchOrders()).filter((o) => o.driverId === driverId && o.status === "Entregue");
-    }
-    const list = await load();
+    const list = await this.getAll();
     return list
       .filter((o) => o.driverId === driverId && o.status === "Entregue")
       .sort((a, b) => b.createdAt - a.createdAt);
   },
 
   async create(order: Order): Promise<void> {
+    const catalogItems = (order.orderItems ?? []).filter((item) => !item.custom && Boolean(item.productId));
+    if (catalogItems.length === 0) {
+      throw new Error("Selecione ao menos um produto cadastrado e ativo.");
+    }
+    order = {
+      ...order,
+      orderItems: catalogItems,
+      items: catalogItems.map((item) => `${item.quantity}x ${item.name} - R$ ${Number(item.total).toFixed(2)}`).join("\n"),
+      customSubtotal: 0,
+      estimatedValue: order.subtotal,
+    };
     if (USE_SUPABASE && supabase) {
       const { data, error } = await supabase
         .from("orders")
         .insert(orderPayload(order))
         .select("id")
         .single();
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível criar pedido."));
+      if (error) {
+        if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível criar pedido."));
+        console.warn("Supabase indisponível ao criar pedido; salvando localmente.", error);
+      } else {
       order.id = data.id;
       const items = (order.orderItems ?? []).map((item) => ({
         order_id: data.id,
@@ -213,6 +228,7 @@ export const orderStore = {
       }
       listeners.forEach((l) => l());
       return;
+      }
     }
     const list = await load();
     list.push(order);
@@ -221,7 +237,7 @@ export const orderStore = {
   },
 
   async update(id: string, patch: Partial<Order>): Promise<Order | undefined> {
-    if (USE_SUPABASE && supabase) {
+    if (USE_SUPABASE && supabase && isUuid(id)) {
       if (patch.complementApprovedAt !== undefined) {
         const { error } = await supabase.rpc("approve_order_complement", { p_order_id: id });
         if (error) throw new Error(friendlySupabaseError(error, "Não foi possível aprovar o complemento."));
@@ -255,12 +271,22 @@ export const orderStore = {
     return list[idx];
   },
 
+  async declineComplement(id: string): Promise<void> {
+    if (USE_SUPABASE && supabase && isUuid(id)) {
+      const { error } = await supabase.rpc("decline_order_complement", { p_order_id: id });
+      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível recusar o complemento."));
+      listeners.forEach((listener) => listener());
+      return;
+    }
+    await this.update(id, { status: "Cancelado", complementDeclinedAt: Date.now() });
+  },
+
   async setStatus(id: string, status: OrderStatus): Promise<void> {
     await this.update(id, { status });
   },
 
   async completeDelivery(id: string, confirmationCode: string): Promise<void> {
-    if (USE_SUPABASE && supabase) {
+    if (USE_SUPABASE && supabase && isUuid(id)) {
       const { error } = await supabase.rpc("complete_delivery", {
         p_order_id: id,
         p_confirmation_code: confirmationCode.trim(),
@@ -273,7 +299,7 @@ export const orderStore = {
   },
 
   async addMessage(id: string, msg: ChatMessage): Promise<void> {
-    if (USE_SUPABASE && supabase) {
+    if (USE_SUPABASE && supabase && isUuid(id)) {
       listeners.forEach((l) => l());
       return;
     }
@@ -288,9 +314,12 @@ export const orderStore = {
   async clearAll(): Promise<void> {
     if (USE_SUPABASE && supabase) {
       const { error } = await supabase.from("orders").delete().neq("status", "__never__");
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível apagar pedidos."));
-      listeners.forEach((l) => l());
-      return;
+      if (!error) {
+        listeners.forEach((l) => l());
+        return;
+      }
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível apagar pedidos."));
+      console.warn("Supabase indisponível ao apagar pedidos; limpando dados locais.", error);
     }
     cache = [];
     await persist();

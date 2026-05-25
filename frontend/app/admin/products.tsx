@@ -16,6 +16,8 @@ import {
 } from "@/src/services/catalogService";
 import { authService } from "@/src/services/authService";
 import { money } from "@/src/components/FinancialBreakdown";
+import { pickImageFromGallery, uploadProductImage } from "@/src/services/imageUploadService";
+import { SafeUriImage } from "@/src/components/SafeUriImage";
 
 type FilterValue = "Todos";
 
@@ -27,16 +29,23 @@ export default function AdminProducts() {
   const [storeFilter, setStoreFilter] = useState<FilterValue | string>("Todos");
   const [branchFilter, setBranchFilter] = useState<FilterValue | StoreBranch>("Todos");
   const [categoryFilter, setCategoryFilter] = useState<FilterValue | ProductCategory>("Todos");
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
-      const session = await authService.getSession();
-      if (!session || (session.role !== "admin" && session.role !== "super_admin")) {
-        router.replace("/auth/login");
-        return;
+      try {
+        const session = await authService.getSession();
+        if (!session || (session.role !== "admin" && session.role !== "super_admin")) {
+          router.replace("/auth/login");
+          return;
+        }
+        setProducts(await catalogService.listProducts());
+        setStores(await catalogService.listStores());
+        setLoadError("");
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Não foi possível carregar produtos.");
       }
-      setProducts(await catalogService.listProducts());
-      setStores(await catalogService.listStores());
     };
     refresh();
     return catalogService.subscribe(refresh);
@@ -66,19 +75,42 @@ export default function AdminProducts() {
       Alert.alert("Preço inválido", "O preço não pode ser negativo.");
       return;
     }
-    await catalogService.upsertProduct({
-      ...editing,
-      name: editing.name.trim(),
-      imageUrl: editing.imageUrl?.trim() || undefined,
-      notes: editing.notes?.trim(),
-    });
-    setEditing(null);
+    if (editing.promoPrice !== undefined && editing.promoPrice > editing.price) {
+      Alert.alert("Preço promocional inválido", "O preço promocional não pode superar o preço estimado.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const rawImage = editing.imageUrl?.trim() ?? "";
+      const imageUrl = rawImage && !/^https?:\/\//i.test(rawImage)
+        ? await uploadProductImage(editing.id, rawImage)
+        : rawImage;
+      await catalogService.upsertProduct({
+        ...editing,
+        name: editing.name.trim(),
+        imageUrl: imageUrl || undefined,
+        notes: editing.notes?.trim(),
+      });
+      setEditing(null);
+    } catch (error) {
+      Alert.alert("Não foi possível salvar", error instanceof Error ? error.message : "Tente novamente.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  async function remove(p: Product) {
+  function remove(p: Product) {
     Alert.alert("Remover", `Remover ${p.name}?`, [
       { text: "Cancelar", style: "cancel" },
-      { text: "Remover", style: "destructive", onPress: () => catalogService.deleteProduct(p.id) },
+      {
+        text: "Remover", style: "destructive", onPress: async () => {
+          try {
+            await catalogService.deleteProduct(p.id);
+          } catch (error) {
+            Alert.alert("Não foi possível remover", error instanceof Error ? error.message : "Tente novamente.");
+          }
+        },
+      },
     ]);
   }
 
@@ -108,6 +140,15 @@ export default function AdminProducts() {
     } : current);
   }
 
+  async function selectImage() {
+    try {
+      const image = await pickImageFromGallery();
+      if (image) setEditing((current) => current ? { ...current, imageUrl: image.uri } : current);
+    } catch (error) {
+      Alert.alert("Imagem não selecionada", error instanceof Error ? error.message : "Tente novamente.");
+    }
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <Header
@@ -121,8 +162,9 @@ export default function AdminProducts() {
       <ScrollView contentContainerStyle={styles.container}>
         <DemoNotice />
         <Text style={styles.intro}>
-          Catálogo opcional para produtos comuns e promoções. O pedido manual continua disponível.
+          Somente produtos ativos deste catálogo ficam disponíveis para compra pelo cliente.
         </Text>
+        {loadError ? <Text style={styles.errorNotice}>{loadError}</Text> : null}
         <Text style={styles.label}>Filtrar por estabelecimento</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs }}>
           {["Todos", ...stores.map((s) => s.id)].map((storeId) => {
@@ -176,6 +218,7 @@ export default function AdminProducts() {
           const branch = getStoreBranch(store);
           return (
             <View key={p.id} style={styles.card}>
+              <SafeUriImage uri={p.imageUrl} style={styles.thumb} icon="cube-outline" iconSize={21} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.title}>{p.name}</Text>
                 <Text style={styles.muted}>{store?.name ?? "—"} • {branch} • {p.category}</Text>
@@ -240,13 +283,20 @@ export default function AdminProducts() {
 
                 <Field label="Preço estimado (R$)" value={String(editing.price)} onChange={(v: string) => setEditing({ ...editing, price: Number(v.replace(",", ".")) || 0 })} keyboardType="numeric" testID="product-price" />
                 <Field label="Preço promocional (opcional)" value={String(editing.promoPrice ?? "")} onChange={(v: string) => setEditing({ ...editing, promoPrice: v ? Number(v.replace(",", ".")) : undefined })} keyboardType="numeric" testID="product-promo" />
+                {editing.imageUrl?.trim() ? <SafeUriImage uri={editing.imageUrl} style={styles.preview} icon="image-outline" /> : null}
+                <View style={styles.imageActions}>
+                  <Button title="Selecionar imagem" variant="secondary" onPress={selectImage} testID="product-pick-image" style={styles.imageButton} />
+                  {editing.imageUrl?.trim() ? (
+                    <Button title="Remover imagem" variant="ghost" onPress={() => setEditing({ ...editing, imageUrl: "" })} testID="product-remove-image" style={styles.imageButton} />
+                  ) : null}
+                </View>
                 <Field label="Imagem URL (opcional)" value={editing.imageUrl ?? ""} onChange={(v: string) => setEditing({ ...editing, imageUrl: v })} testID="product-image" />
                 <Field label="Observações" value={editing.notes ?? ""} onChange={(v: string) => setEditing({ ...editing, notes: v })} multiline testID="product-notes" />
 
                 <Row label="Ativo" value={editing.active} onToggle={() => setEditing({ ...editing, active: !editing.active })} testID="product-active" />
                 <Row label="Sujeito à confirmação no local" value={editing.confirmInStore} onToggle={() => setEditing({ ...editing, confirmInStore: !editing.confirmInStore })} testID="product-confirm" />
 
-                <Button title="Salvar" onPress={save} testID="product-save" />
+                <Button title="Salvar" onPress={save} loading={saving} testID="product-save" />
                 <Button title="Cancelar" variant="ghost" onPress={() => setEditing(null)} testID="product-cancel" />
               </ScrollView>
             </KeyboardAvoidingView>
@@ -286,6 +336,8 @@ const styles = StyleSheet.create({
   container: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
   intro: { color: colors.textSecondary, fontSize: fontSize.small },
   card: { flexDirection: "row", gap: spacing.sm, padding: spacing.md, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borderLight, alignItems: "center" },
+  thumb: { width: 52, height: 52, borderRadius: radius.md },
+  thumbFallback: { width: 52, height: 52, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: colors.primarySoft },
   title: { fontWeight: "700", color: colors.textPrimary, fontSize: fontSize.bodyLarge },
   muted: { color: colors.textSecondary, fontSize: fontSize.small, marginTop: 2 },
   priceRow: { flexDirection: "row", gap: spacing.sm, marginTop: 4, alignItems: "center" },
@@ -294,6 +346,9 @@ const styles = StyleSheet.create({
   inactive: { color: colors.error, fontSize: fontSize.small, fontWeight: "700" },
   label: { color: colors.textSecondary, fontWeight: "600", fontSize: fontSize.small },
   branchHint: { color: colors.primary, fontWeight: "800", fontSize: fontSize.small },
+  preview: { width: "100%", height: 170, borderRadius: radius.md, backgroundColor: colors.borderLight },
+  imageActions: { flexDirection: "row", gap: spacing.sm },
+  imageButton: { flex: 1 },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, color: colors.textPrimary, backgroundColor: colors.surface, minHeight: 50 },
   chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, height: 36 },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
@@ -302,4 +357,5 @@ const styles = StyleSheet.create({
   toggle: { width: 36, height: 22, borderRadius: 11, backgroundColor: colors.border },
   toggleOn: { backgroundColor: colors.primary },
   toggleLabel: { fontWeight: "700", color: colors.textSecondary },
+  errorNotice: { backgroundColor: colors.errorSoft, color: colors.error, padding: spacing.sm, borderRadius: radius.md, fontSize: fontSize.small, fontWeight: "700" },
 });

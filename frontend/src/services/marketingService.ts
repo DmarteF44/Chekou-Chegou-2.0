@@ -1,6 +1,6 @@
 import { COUPONS, Coupon, PROMOTIONS, Promotion } from "@/src/data/mock";
 import { storage } from "@/src/utils/storage";
-import { USE_SUPABASE, friendlySupabaseError } from "@/src/config/runtime";
+import { USE_SUPABASE, friendlySupabaseError, isSupabaseUnavailable } from "@/src/config/runtime";
 import { supabase } from "@/src/lib/supabase";
 
 const COUPONS_KEY = "chekou_coupons_v1";
@@ -20,6 +20,18 @@ function mapCoupon(row: any): Coupon {
     description: row.description ?? "",
     discount: Number(row.discount ?? 0),
     type: row.type ?? "order",
+    active: row.active ?? true,
+  };
+}
+
+function mapPromotion(row: any): Promotion {
+  return {
+    id: row.id,
+    title: row.title ?? "",
+    storeName: row.store_name ?? "",
+    description: row.description ?? "",
+    image: row.image_url ?? "",
+    discount: row.discount_label ?? "",
     active: row.active ?? true,
   };
 }
@@ -93,8 +105,9 @@ export const marketingService = {
       let query = supabase.from("coupons").select("*").order("code", { ascending: true });
       if (opts?.activeOnly) query = query.eq("active", true);
       const { data, error } = await query;
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível listar cupons."));
-      return (data ?? []).map(mapCoupon);
+      if (!error) return (data ?? []).map(mapCoupon);
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível listar cupons."));
+      console.warn("Supabase indisponível ao listar cupons; usando dados locais.", error);
     }
     const coupons = await readCoupons();
     return opts?.activeOnly ? coupons.filter((coupon) => coupon.active !== false) : coupons;
@@ -109,8 +122,9 @@ export const marketingService = {
         .eq("code", normalized)
         .eq("active", true)
         .maybeSingle();
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível buscar cupom."));
-      return data ? mapCoupon(data) : undefined;
+      if (!error) return data ? mapCoupon(data) : undefined;
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível buscar cupom."));
+      console.warn("Supabase indisponível ao buscar cupom; usando dados locais.", error);
     }
     const coupons = await readCoupons();
     return coupons.find((coupon) => coupon.code.toUpperCase() === normalized && coupon.active !== false);
@@ -126,9 +140,12 @@ export const marketingService = {
         type: coupon.type,
         active: coupon.active ?? true,
       }, { onConflict: "code" });
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível salvar cupom."));
-      notify();
-      return;
+      if (!error) {
+        notify();
+        return;
+      }
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível salvar cupom."));
+      console.warn("Supabase indisponível ao salvar cupom; salvando localmente.", error);
     }
     const coupons = await readCoupons();
     const normalized = coupon.code.trim().toUpperCase();
@@ -148,19 +165,48 @@ export const marketingService = {
     const normalized = code.trim().toUpperCase();
     if (USE_SUPABASE && supabase) {
       const { error } = await supabase.from("coupons").delete().eq("code", normalized);
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível remover cupom."));
-      notify();
-      return;
+      if (!error) {
+        notify();
+        return;
+      }
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível remover cupom."));
+      console.warn("Supabase indisponível ao remover cupom; removendo localmente.", error);
     }
     await writeCoupons((await readCoupons()).filter((coupon) => coupon.code.toUpperCase() !== normalized));
   },
 
   async listPromotions(opts?: { activeOnly?: boolean }) {
+    if (USE_SUPABASE && supabase) {
+      let query = supabase.from("promotions").select("*").order("title", { ascending: true });
+      if (opts?.activeOnly) query = query.eq("active", true);
+      const { data, error } = await query;
+      if (!error) return (data ?? []).map(mapPromotion);
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível listar promoções."));
+      console.warn("Supabase indisponível ao listar promoções; usando dados locais.", error);
+    }
     const promotions = await readPromotions();
     return opts?.activeOnly ? promotions.filter((promotion) => promotion.active !== false) : promotions;
   },
 
   async upsertPromotion(promotion: Promotion) {
+    if (USE_SUPABASE && supabase) {
+      const payload = {
+        id: promotion.id,
+        title: promotion.title.trim(),
+        store_name: promotion.storeName.trim(),
+        description: promotion.description.trim(),
+        image_url: promotion.image.trim() || null,
+        discount_label: promotion.discount.trim(),
+        active: promotion.active ?? true,
+      };
+      const { error } = await supabase.from("promotions").upsert(payload, { onConflict: "id" });
+      if (!error) {
+        notify();
+        return;
+      }
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível salvar promoção."));
+      console.warn("Supabase indisponível ao salvar promoção; salvando localmente.", error);
+    }
     const promotions = await readPromotions();
     const next = {
       ...promotion,
@@ -177,6 +223,15 @@ export const marketingService = {
   },
 
   async deletePromotion(id: string) {
+    if (USE_SUPABASE && supabase) {
+      const { error } = await supabase.from("promotions").delete().eq("id", id);
+      if (!error) {
+        notify();
+        return;
+      }
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível remover promoção."));
+      console.warn("Supabase indisponível ao remover promoção; removendo localmente.", error);
+    }
     await writePromotions((await readPromotions()).filter((promotion) => promotion.id !== id));
   },
 };

@@ -13,6 +13,8 @@ import { orderStore } from "@/src/data/orderStore";
 import { Order, ORDER_STATUSES, OrderStatus } from "@/src/data/mock";
 import { authService, User } from "@/src/services/authService";
 import { driverService } from "@/src/services/driverService";
+import { AppSettings, DEFAULT_SETTINGS, settingsService } from "@/src/services/settingsService";
+import { validateActualPurchaseValue } from "@/src/utils/purchaseValidation";
 
 export default function DriverOrder() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -21,31 +23,40 @@ export default function DriverOrder() {
   const [order, setOrder] = useState<Order | null>(null);
   const [actualValue, setActualValue] = useState("");
   const [codeInput, setCodeInput] = useState("");
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
-      const session = await authService.getSession();
-      if (!session || session.role !== "driver") {
-        router.replace("/auth/login");
-        return;
+      try {
+        const session = await authService.getSession();
+        if (!session || session.role !== "driver") {
+          router.replace("/auth/login");
+          return;
+        }
+        if (session.driverStatus === "blocked") {
+          router.replace("/driver/blocked");
+          return;
+        }
+        if (session.driverStatus !== "approved") {
+          router.replace("/driver/pending");
+          return;
+        }
+        setMe(session);
+        const [o, appSettings] = await Promise.all([orderStore.getById(id as string), settingsService.get()]);
+        setOrder(o ?? null);
+        setSettings(appSettings);
+        setLoadError("");
+        if (o?.actualValue !== undefined) setActualValue(String(o.actualValue));
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Não foi possível carregar o pedido.");
       }
-      if (session.driverStatus === "blocked") {
-        router.replace("/driver/blocked");
-        return;
-      }
-      if (session.driverStatus !== "approved") {
-        router.replace("/driver/pending");
-        return;
-      }
-      setMe(session);
-      const o = await orderStore.getById(id as string);
-      setOrder(o ?? null);
-      if (o?.actualValue !== undefined) setActualValue(String(o.actualValue));
     };
     refresh();
     const a = orderStore.subscribe(refresh);
     const b = authService.subscribe(refresh);
-    return () => { a(); b(); };
+    const c = settingsService.subscribe(refresh);
+    return () => { a(); b(); c(); };
   }, [id, router]);
 
   if (!order) {
@@ -93,21 +104,27 @@ export default function DriverOrder() {
       Alert.alert("Valor inválido", "Informe o valor real da compra.");
       return;
     }
-    const limit = order!.authorizedPurchaseLimit ?? order!.estimatedValue + order!.safetyMargin;
-    if (v > limit) {
-      try {
-        await orderStore.update(order!.id, { actualValue: v, status: "Aguardando complemento do cliente" });
-        Alert.alert("Complemento necessário", `Valor real ${money(v)} ultrapassa o limite autorizado de ${money(limit)}.`);
-      } catch (error) {
-        Alert.alert("Não foi possível salvar", error instanceof Error ? error.message : "Tente novamente.");
-      }
-      return;
-    }
+    const validation = validateActualPurchaseValue(order!, v, settings);
     const nextPatch: Partial<Order> = { actualValue: v };
-    if (order!.status === "Aguardando complemento do cliente") nextPatch.status = "Comprando produtos";
+    if (validation.status === "needs_complement") nextPatch.status = "Aguardando complemento do cliente";
+    if (validation.status === "blocked_review") nextPatch.status = "Aguardando revisão do Admin";
+    if (
+      (validation.status === "ok" || validation.status === "warning_low")
+      && (order!.status === "Aguardando complemento do cliente" || order!.status === "Aguardando revisão do Admin")
+    ) {
+      nextPatch.status = "Comprando produtos";
+    }
     try {
       await orderStore.update(order!.id, nextPatch);
-      Alert.alert("Valor salvo!", `Compra real: ${money(v)}`);
+      if (validation.status === "needs_complement") {
+        Alert.alert("Complemento necessário", `${validation.message}\nComplemento: ${money(validation.extraRequired)}.`);
+      } else if (validation.status === "blocked_review") {
+        Alert.alert("Revisão necessária", validation.message);
+      } else if (validation.status === "warning_low") {
+        Alert.alert("Confira a compra", validation.message);
+      } else {
+        Alert.alert("Valor salvo!", `Compra real: ${money(v)}. Dentro da faixa permitida.`);
+      }
     } catch (error) {
       Alert.alert("Não foi possível salvar", error instanceof Error ? error.message : "Tente novamente.");
     }
@@ -135,8 +152,8 @@ export default function DriverOrder() {
       Alert.alert("Código incorreto", "Confira o código informado pelo cliente.");
       return;
     }
-    if (order!.status === "Aguardando complemento do cliente") {
-      Alert.alert("Aguardando complemento", "Finalize somente após o cliente autorizar o complemento.");
+    if (order!.status === "Aguardando complemento do cliente" || order!.status === "Aguardando revisão do Admin") {
+      Alert.alert("Pedido bloqueado", "Finalize somente após a pendência ser resolvida.");
       return;
     }
     try {
@@ -152,7 +169,10 @@ export default function DriverOrder() {
   const nextLabel = (() => {
     const idx = ORDER_STATUSES.indexOf(order.status);
     if (idx < 0) return null;
-    if (order.status === "A caminho do cliente" || order.status === "Entregue" || order.status === "Cancelado") return null;
+    if (
+      order.status === "A caminho do cliente" || order.status === "Entregue" || order.status === "Cancelado"
+      || order.status === "Aguardando complemento do cliente" || order.status === "Aguardando revisão do Admin"
+    ) return null;
     const candidate = ORDER_STATUSES[idx + 1];
     const next = candidate === "Aguardando complemento do cliente" ? "A caminho do cliente" : candidate;
     return `Avançar: ${next}`;
@@ -161,6 +181,9 @@ export default function DriverOrder() {
   const sobra = order.actualValue !== undefined
     ? Math.max(0, order.estimatedValue + order.safetyMargin - order.actualValue)
     : null;
+  const validation = order.actualValue !== undefined
+    ? validateActualPurchaseValue(order, order.actualValue, settings)
+    : null;
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -168,6 +191,7 @@ export default function DriverOrder() {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <DemoNotice />
+        {loadError ? <Text style={styles.errorText}>{loadError}</Text> : null}
         {/* Items */}
         <View style={styles.card}>
           <Text style={styles.h}>Lista do cliente</Text>
@@ -219,8 +243,16 @@ export default function DriverOrder() {
             {sobra !== null && (
               <Text style={styles.refundText}>Sobra a devolver: {money(sobra)}</Text>
             )}
+              {validation ? (
+                <Text style={validation.status === "ok" ? styles.okText : styles.warnText}>
+                  Faixa permitida: {money(validation.minAllowed)} a {money(validation.maxAllowed)}. {validation.message}
+                </Text>
+              ) : null}
               {order.status === "Aguardando complemento do cliente" && (
                 <Text style={styles.warnText}>Pedido bloqueado até complemento do cliente.</Text>
+              )}
+              {order.status === "Aguardando revisão do Admin" && (
+                <Text style={styles.errorText}>Pedido bloqueado para revisão do Admin.</Text>
               )}
             </View>
 
@@ -320,6 +352,11 @@ const styles = StyleSheet.create({
   codeInput: { textAlign: "center", fontSize: 22, letterSpacing: 8, fontWeight: "700" },
   refundText: { color: colors.primaryDark, fontWeight: "700", marginTop: 4 },
   warnText: { color: colors.warning, fontWeight: "800", marginTop: 4 },
+  okText: { color: colors.primaryDark, fontWeight: "700", marginTop: 4 },
+  errorText: {
+    color: colors.error, fontWeight: "700", backgroundColor: colors.errorSoft,
+    padding: spacing.sm, borderRadius: radius.md,
+  },
   proofRow: { flexDirection: "row", gap: spacing.sm },
   proofBtn: {
     flex: 1, alignItems: "center", padding: spacing.md, borderRadius: radius.md,

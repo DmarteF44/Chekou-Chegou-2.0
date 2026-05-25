@@ -13,6 +13,7 @@ export const orderService = {
   create: orderStore.create.bind(orderStore),
   update: orderStore.update.bind(orderStore),
   setStatus: orderStore.setStatus.bind(orderStore),
+  declineComplement: orderStore.declineComplement.bind(orderStore),
   addMessage: orderStore.addMessage.bind(orderStore),
   clearAll: orderStore.clearAll.bind(orderStore),
   newId: generateId,

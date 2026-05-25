@@ -20,8 +20,9 @@ import { marketingService } from "@/src/services/marketingService";
 import { DRIVER_LEVELS } from "@/src/services/driverService";
 import { Coupon, Order, ORDER_STATUSES, OrderStatus, Promotion } from "@/src/data/mock";
 import { USE_SUPABASE } from "@/src/config/runtime";
+import { AppSettings, DEFAULT_SETTINGS, settingsService } from "@/src/services/settingsService";
 
-const TABS = ["Resumo", "Pedidos", "Motoristas", "Usuários", "Lojas", "Produtos", "Cupons", "Disputas"] as const;
+const TABS = ["Resumo", "Pedidos", "Motoristas", "Usuários", "Lojas", "Produtos", "Cupons", "Configurações", "Disputas"] as const;
 type Tab = typeof TABS[number];
 
 export default function AdminIndex() {
@@ -36,6 +37,7 @@ export default function AdminIndex() {
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [editingDriver, setEditingDriver] = useState<User | null>(null);
   const [loadError, setLoadError] = useState("");
+  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {
     (async () => {
@@ -68,6 +70,7 @@ export default function AdminIndex() {
         ]);
         setCoupons(nextCoupons);
         setPromotions(nextPromotions);
+        setAppSettings(await settingsService.get());
         setLoadError("");
       } catch (reason) {
         setLoadError(reason instanceof Error ? reason.message : "Dados do Admin temporariamente indisponíveis.");
@@ -89,7 +92,15 @@ export default function AdminIndex() {
   async function resetOrders() {
     Alert.alert("Apagar pedidos", "Apagar todos os pedidos simulados?", [
       { text: "Cancelar", style: "cancel" },
-      { text: "Apagar", style: "destructive", onPress: () => orderService.clearAll() },
+      {
+        text: "Apagar", style: "destructive", onPress: async () => {
+          try {
+            await orderService.clearAll();
+          } catch (error) {
+            Alert.alert("Não foi possível apagar", error instanceof Error ? error.message : "Tente novamente.");
+          }
+        },
+      },
     ]);
   }
 
@@ -103,7 +114,7 @@ export default function AdminIndex() {
       role: "driver",
       driverStatus: "approved",
       driverLevel: 1,
-      operationalLimit: DRIVER_LEVELS[1].limit,
+      operationalLimit: appSettings.driverInitialLimitsByLevel["1"],
       createdAt: Date.now(),
     });
   }
@@ -114,37 +125,41 @@ export default function AdminIndex() {
       Alert.alert("Dados inválidos", "Informe nome e e-mail do entregador.");
       return;
     }
-    const users = await authService.getAllUsers();
-    const exists = users.find((u) => u.id === editingDriver.id);
-    if (exists) {
-      await authService.update(editingDriver.id, editingDriver);
-    } else {
-      if (USE_SUPABASE) {
-        Alert.alert("Cadastro real", "No Supabase, o entregador precisa criar a conta pelo app. Depois o Admin aprova e edita o perfil aqui.");
-        return;
+    try {
+      const users = await authService.getAllUsers();
+      const exists = users.find((u) => u.id === editingDriver.id);
+      if (exists) {
+        await authService.update(editingDriver.id, editingDriver);
+      } else {
+        if (USE_SUPABASE) {
+          Alert.alert("Cadastro real", "No Supabase, o entregador precisa criar a conta pelo app. Depois o Admin aprova e edita o perfil aqui.");
+          return;
+        }
+        const created = await authService.signup({
+          name: editingDriver.name,
+          email: editingDriver.email,
+          phone: editingDriver.phone,
+          password: editingDriver.password || "123456",
+        });
+        if (!created) {
+          Alert.alert("E-mail já cadastrado", "Use outro e-mail para este entregador.");
+          return;
+        }
+        await authService.update(created.id, {
+          role: "driver",
+          driverStatus: editingDriver.driverStatus,
+          driverLevel: editingDriver.driverLevel,
+          operationalLimit: editingDriver.operationalLimit,
+        });
+        if (me?.password) {
+          await authService.logout();
+          await authService.login(me.email, me.password);
+        }
       }
-      const created = await authService.signup({
-        name: editingDriver.name,
-        email: editingDriver.email,
-        phone: editingDriver.phone,
-        password: editingDriver.password || "123456",
-      });
-      if (!created) {
-        Alert.alert("E-mail já cadastrado", "Use outro e-mail para este entregador.");
-        return;
-      }
-      await authService.update(created.id, {
-        role: "driver",
-        driverStatus: editingDriver.driverStatus,
-        driverLevel: editingDriver.driverLevel,
-        operationalLimit: editingDriver.operationalLimit,
-      });
-      if (me?.password) {
-        await authService.logout();
-        await authService.login(me.email, me.password);
-      }
+      setEditingDriver(null);
+    } catch (error) {
+      Alert.alert("Não foi possível salvar", error instanceof Error ? error.message : "Tente novamente.");
     }
-    setEditingDriver(null);
   }
 
   async function removeDriver(user: User) {
@@ -159,7 +174,11 @@ export default function AdminIndex() {
   }
 
   async function updateOrderStatus(order: Order, status: OrderStatus) {
-    await orderService.update(order.id, { status });
+    try {
+      await orderService.update(order.id, { status });
+    } catch (error) {
+      Alert.alert("Não foi possível atualizar pedido", error instanceof Error ? error.message : "Tente novamente.");
+    }
   }
 
   if (!me) return null;
@@ -223,7 +242,16 @@ export default function AdminIndex() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.title}>{o.storeName}</Text>
                     <Text style={styles.muted}>{new Date(o.createdAt).toLocaleString("pt-BR")}</Text>
+                    <Text style={styles.muted}>Cliente: {o.clientId}</Text>
+                    <Text style={styles.muted}>Entregador: {o.driverId ?? "Não atribuído"}</Text>
                     <Text style={styles.muted}>{o.items}</Text>
+                    <Text style={styles.orderValues}>
+                      Estimado {money(o.subtotal)} | Autorizado {money(o.authorizedPurchaseLimit)}
+                      {o.actualValue !== undefined ? ` | Real ${money(o.actualValue)}` : ""}
+                    </Text>
+                    {o.status === "Aguardando complemento do cliente" ? (
+                      <Text style={styles.pendingText}>Complemento aguardando decisão do cliente.</Text>
+                    ) : null}
                     <View style={{ marginTop: 4 }}><StatusPill status={o.status} /></View>
                   </View>
                   <Text style={styles.amount}>{money(o.total)}</Text>
@@ -323,7 +351,7 @@ export default function AdminIndex() {
 
         {tab === "Produtos" && (
           <>
-            <Card title="Produtos locais" subtitle={`${catalogStats.products} itens disponíveis para seleção no cliente`} badge="AsyncStorage" />
+            <Card title={USE_SUPABASE ? "Produtos conectados" : "Produtos locais"} subtitle={`${catalogStats.products} itens disponíveis para seleção no cliente`} badge={USE_SUPABASE ? "Online" : "AsyncStorage"} />
             <Button
               title="Gerenciar produtos"
               onPress={() => router.push("/admin/products")}
@@ -335,13 +363,25 @@ export default function AdminIndex() {
 
         {tab === "Cupons" && (
           <>
-            <Card title="Cupons locais" subtitle={`${coupons.length} cupons cadastrados no AsyncStorage`} badge="CRUD" />
+            <Card title={USE_SUPABASE ? "Cupons conectados" : "Cupons locais"} subtitle={`${coupons.length} cupons cadastrados`} badge="CRUD" />
             <Card title="Promoções locais" subtitle={`${promotions.length} promoções cadastradas no AsyncStorage`} badge="CRUD" />
             <Button
               title="Gerenciar cupons e promoções"
               onPress={() => router.push("/admin/marketing")}
               testID="admin-go-marketing"
               icon={<Ionicons name="pricetags" size={18} color={colors.white} />}
+            />
+          </>
+        )}
+
+        {tab === "Configurações" && (
+          <>
+            <Card title="Taxas e margens" subtitle="Checkout, tolerância do valor real e limites iniciais" badge={USE_SUPABASE ? "Online" : "Local"} />
+            <Button
+              title="Editar configurações"
+              onPress={() => router.push("/admin/settings")}
+              testID="admin-go-settings"
+              icon={<Ionicons name="settings-outline" size={18} color={colors.white} />}
             />
           </>
         )}
@@ -369,7 +409,7 @@ export default function AdminIndex() {
                     <TouchableOpacity
                       key={level}
                       style={[styles.levelBtn, editingDriver.driverLevel === level && styles.levelBtnActive]}
-                      onPress={() => setEditingDriver({ ...editingDriver, driverLevel: level, operationalLimit: DRIVER_LEVELS[level].limit })}
+                      onPress={() => setEditingDriver({ ...editingDriver, driverLevel: level, operationalLimit: appSettings.driverInitialLimitsByLevel[String(level)] })}
                     >
                       <Text style={[styles.levelBtnText, editingDriver.driverLevel === level && { color: colors.white }]}>N{level}</Text>
                     </TouchableOpacity>
@@ -476,6 +516,8 @@ const styles = StyleSheet.create({
   title: { color: colors.textPrimary, fontWeight: "700", fontSize: fontSize.bodyLarge },
   muted: { color: colors.textSecondary, fontSize: fontSize.small, marginTop: 2 },
   amount: { color: colors.primary, fontWeight: "800", fontSize: fontSize.bodyLarge },
+  orderValues: { color: colors.primaryDark, fontWeight: "700", fontSize: fontSize.small, marginTop: spacing.xs },
+  pendingText: { color: colors.warning, fontWeight: "700", fontSize: fontSize.small, marginTop: spacing.xs },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: colors.primarySoft },
   badgeText: { fontWeight: "700", fontSize: fontSize.small },
   levelBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },

@@ -91,6 +91,7 @@ export const ORDER_STATUSES = [
   "Indo ao estabelecimento",
   "Comprando produtos",
   "Aguardando complemento do cliente",
+  "Aguardando revisão do Admin",
   "A caminho do cliente",
   "Entregue",
   "Cancelado",
@@ -143,6 +144,7 @@ export type Order = {
   paid: boolean;
   complementApprovedAt?: number;
   complementAmount?: number;
+  complementDeclinedAt?: number;
 };
 
 export const DEFAULT_DRIVER_NAME = "João Entregador";

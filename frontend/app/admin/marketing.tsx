@@ -50,16 +50,22 @@ export default function AdminMarketing() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [editing, setEditing] = useState<Editing>(null);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
-      const session = await authService.getSession();
-      if (!session || (session.role !== "admin" && session.role !== "super_admin")) {
-        router.replace("/auth/login");
-        return;
+      try {
+        const session = await authService.getSession();
+        if (!session || (session.role !== "admin" && session.role !== "super_admin")) {
+          router.replace("/auth/login");
+          return;
+        }
+        setCoupons(await marketingService.listCoupons());
+        setPromotions(await marketingService.listPromotions());
+        setLoadError("");
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Não foi possível carregar cupons.");
       }
-      setCoupons(await marketingService.listCoupons());
-      setPromotions(await marketingService.listPromotions());
     };
     refresh();
     return marketingService.subscribe(refresh);
@@ -81,14 +87,24 @@ export default function AdminMarketing() {
         Alert.alert("Dados inválidos", "Informe código, descrição e desconto.");
         return;
       }
-      await marketingService.upsertCoupon(coupon);
+      try {
+        await marketingService.upsertCoupon(coupon);
+      } catch (error) {
+        Alert.alert("Não foi possível salvar cupom", error instanceof Error ? error.message : "Tente novamente.");
+        return;
+      }
     } else {
       const promotion = editing.value;
       if (promotion.title.trim().length < 3 || promotion.storeName.trim().length < 3) {
         Alert.alert("Dados inválidos", "Informe título e estabelecimento.");
         return;
       }
-      await marketingService.upsertPromotion(promotion);
+      try {
+        await marketingService.upsertPromotion(promotion);
+      } catch (error) {
+        Alert.alert("Não foi possível salvar promoção", error instanceof Error ? error.message : "Tente novamente.");
+        return;
+      }
     }
     setEditing(null);
   }
@@ -96,14 +112,30 @@ export default function AdminMarketing() {
   function removeCoupon(coupon: Coupon) {
     Alert.alert("Remover cupom", `Remover ${coupon.code}?`, [
       { text: "Cancelar", style: "cancel" },
-      { text: "Remover", style: "destructive", onPress: () => marketingService.deleteCoupon(coupon.code) },
+      {
+        text: "Remover", style: "destructive", onPress: async () => {
+          try {
+            await marketingService.deleteCoupon(coupon.code);
+          } catch (error) {
+            Alert.alert("Não foi possível remover", error instanceof Error ? error.message : "Tente novamente.");
+          }
+        },
+      },
     ]);
   }
 
   function removePromotion(promotion: Promotion) {
     Alert.alert("Remover promoção", `Remover ${promotion.title}?`, [
       { text: "Cancelar", style: "cancel" },
-      { text: "Remover", style: "destructive", onPress: () => marketingService.deletePromotion(promotion.id) },
+      {
+        text: "Remover", style: "destructive", onPress: async () => {
+          try {
+            await marketingService.deletePromotion(promotion.id);
+          } catch (error) {
+            Alert.alert("Não foi possível remover", error instanceof Error ? error.message : "Tente novamente.");
+          }
+        },
+      },
     ]);
   }
 
@@ -112,6 +144,7 @@ export default function AdminMarketing() {
       <Header title="Cupons e Promoções" />
       <ScrollView contentContainerStyle={styles.container}>
         <DemoNotice />
+        {loadError ? <Text style={styles.errorNotice}>{loadError}</Text> : null}
 
         <SectionHeader title="Cupons" onAdd={newCoupon} testID="marketing-new-coupon" />
         {coupons.length === 0 ? <Empty text="Nenhum cupom cadastrado." /> : coupons.map((coupon) => (
@@ -287,4 +320,5 @@ const styles = StyleSheet.create({
     borderColor: colors.borderLight,
     padding: spacing.md,
   },
+  errorNotice: { backgroundColor: colors.errorSoft, color: colors.error, padding: spacing.sm, borderRadius: radius.md, fontSize: fontSize.small, fontWeight: "700" },
 });

@@ -54,3 +54,14 @@ on conflict (code) do update set
   discount = excluded.discount,
   type = excluded.type,
   active = excluded.active;
+
+insert into public.promotions (id, title, store_name, description, image_url, discount_label, active)
+values
+  ('promo-eletronicos-jatai', 'Acessórios em destaque', 'Eletrônicos Jataí', 'Cabos, carregadores e fones com preços especiais para teste.', null, 'Teste', true)
+on conflict (id) do update set
+  title = excluded.title,
+  store_name = excluded.store_name,
+  description = excluded.description,
+  image_url = excluded.image_url,
+  discount_label = excluded.discount_label,
+  active = excluded.active;

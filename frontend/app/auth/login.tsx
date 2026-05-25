@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import {
-  View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert,
+  View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image,
   KeyboardAvoidingView, Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -54,7 +54,7 @@ export default function Login() {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <View style={styles.logo}><Text style={styles.logoText}>CG</Text></View>
+          <Image source={require("../../Logo.png")} style={styles.logo} resizeMode="contain" />
           <Text style={styles.brand}>Chekou Ganhou</Text>
           <DemoNotice compact />
           <Text style={styles.tagline}>Peça de mercados, farmácias e lojas locais sem sair de casa.</Text>
@@ -103,10 +103,9 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   scroll: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
   logo: {
-    width: 72, height: 72, borderRadius: 22, backgroundColor: colors.primary,
-    alignItems: "center", justifyContent: "center", alignSelf: "center", marginTop: spacing.lg,
+    width: 92, height: 92, borderRadius: radius.md,
+    alignSelf: "center", marginTop: spacing.lg,
   },
-  logoText: { color: colors.white, fontWeight: "800", fontSize: 28 },
   brand: { fontSize: 28, fontWeight: "800", color: colors.textPrimary, textAlign: "center", marginTop: spacing.sm },
   tagline: { color: colors.textSecondary, textAlign: "center", marginBottom: spacing.md },
   form: {

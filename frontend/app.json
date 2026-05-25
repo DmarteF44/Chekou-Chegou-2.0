@@ -27,6 +27,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permita que o Chekou Ganhou selecione imagens para o catálogo."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./Logo.png",

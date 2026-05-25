@@ -12,19 +12,31 @@ import { FinancialBreakdown, money } from "@/src/components/FinancialBreakdown";
 import { orderStore } from "@/src/data/orderStore";
 import { Order } from "@/src/data/mock";
 import { USE_SUPABASE } from "@/src/config/runtime";
+import { AppSettings, DEFAULT_SETTINGS, settingsService } from "@/src/services/settingsService";
+import { validateActualPurchaseValue } from "@/src/utils/purchaseValidation";
 
 export default function Tracking() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const router = useRouter();
   const [order, setOrder] = useState<Order | null>(null);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
-      const o = await orderStore.getById(orderId as string);
-      setOrder(o ?? null);
+      try {
+        const [o, appSettings] = await Promise.all([orderStore.getById(orderId as string), settingsService.get()]);
+        setOrder(o ?? null);
+        setSettings(appSettings);
+        setLoadError("");
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Não foi possível carregar o pedido.");
+      }
     };
     refresh();
-    return orderStore.subscribe(refresh);
+    const a = orderStore.subscribe(refresh);
+    const b = settingsService.subscribe(refresh);
+    return () => { a(); b(); };
   }, [orderId]);
 
   if (!order) {
@@ -41,6 +53,9 @@ export default function Tracking() {
   const currentOrder = order;
   const currentLimit = currentOrder.authorizedPurchaseLimit ?? currentOrder.estimatedValue + currentOrder.safetyMargin;
   const complementAmount = currentOrder.actualValue !== undefined ? Math.max(0, currentOrder.actualValue - currentLimit) : 0;
+  const validation = currentOrder.actualValue !== undefined
+    ? validateActualPurchaseValue(currentOrder, currentOrder.actualValue, settings)
+    : null;
 
   async function approveComplement() {
     if (!currentOrder.actualValue || complementAmount <= 0) {
@@ -61,11 +76,29 @@ export default function Tracking() {
     }
   }
 
+  async function declineComplement() {
+    Alert.alert("Recusar complemento", "O pedido será cancelado sem cobrança adicional simulada.", [
+      { text: "Voltar", style: "cancel" },
+      {
+        text: "Recusar e cancelar",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await orderStore.declineComplement(currentOrder.id);
+          } catch (error) {
+            Alert.alert("Não foi possível recusar", error instanceof Error ? error.message : "Tente novamente.");
+          }
+        },
+      },
+    ]);
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <Header title="Acompanhar Pedido" subtitle={order.storeName} />
       <ScrollView contentContainerStyle={styles.container}>
         <DemoNotice />
+        {loadError ? <Text style={styles.errorText}>{loadError}</Text> : null}
         {/* Confirmation code highlight */}
         <View style={styles.codeBox}>
           <Text style={styles.codeLabel}>Código de confirmação</Text>
@@ -85,10 +118,21 @@ export default function Tracking() {
             <View style={{ flex: 1 }}>
               <Text style={styles.complementTitle}>Complemento pendente</Text>
               <Text style={styles.complementText}>
-                O valor real informado foi {money(order.actualValue ?? 0)}. Autorize {money(complementAmount)} para liberar o andamento.
+                Estimativa dos produtos: {money(order.subtotal)}. Valor real: {money(order.actualValue ?? 0)}.
+                {"\n"}Autorize {money(complementAmount)} para liberar o andamento.
               </Text>
             </View>
-            <Button title="Aprovar" onPress={approveComplement} testID="client-approve-complement" style={styles.complementButton} />
+            <View style={styles.complementActions}>
+              <Button title="Aprovar" onPress={approveComplement} testID="client-approve-complement" style={styles.complementButton} />
+              <Button title="Recusar" variant="ghost" onPress={declineComplement} testID="client-decline-complement" style={styles.complementButton} />
+            </View>
+          </View>
+        )}
+
+        {order.status === "Aguardando revisão do Admin" && (
+          <View style={styles.reviewBox}>
+            <Ionicons name="alert-circle" size={20} color={colors.error} />
+            <Text style={styles.reviewText}>O valor informado precisa de revisão antes de o pedido continuar.</Text>
           </View>
         )}
 
@@ -154,6 +198,7 @@ export default function Tracking() {
             <Text style={styles.refundText}>
               Valor real informado: {money(order.actualValue)}
               {"\n"}Sobra a devolver: {money(Math.max(0, order.estimatedValue + order.safetyMargin - order.actualValue))}
+              {validation ? `\nFaixa aceita: ${money(validation.minAllowed)} a ${money(validation.maxAllowed)}.` : ""}
             </Text>
           </View>
         )}
@@ -209,4 +254,14 @@ const styles = StyleSheet.create({
   complementTitle: { color: colors.warning, fontWeight: "800", fontSize: fontSize.body },
   complementText: { color: colors.textSecondary, fontSize: fontSize.small, lineHeight: 18, marginTop: 2 },
   complementButton: { minHeight: 42, paddingHorizontal: spacing.md },
+  complementActions: { gap: spacing.xs },
+  reviewBox: {
+    flexDirection: "row", gap: spacing.sm, alignItems: "center",
+    backgroundColor: colors.errorSoft, padding: spacing.md, borderRadius: radius.lg,
+  },
+  reviewText: { flex: 1, color: colors.error, fontSize: fontSize.small, fontWeight: "700" },
+  errorText: {
+    backgroundColor: colors.errorSoft, color: colors.error, padding: spacing.sm,
+    borderRadius: radius.md, fontSize: fontSize.small, fontWeight: "700",
+  },
 });

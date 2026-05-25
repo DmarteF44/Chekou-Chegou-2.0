@@ -14,6 +14,8 @@ import {
   catalogService, Store, StoreBranch, STORE_BRANCHES, STORE_TYPES,
 } from "@/src/services/catalogService";
 import { authService } from "@/src/services/authService";
+import { pickImageFromGallery, uploadStoreImage } from "@/src/services/imageUploadService";
+import { SafeUriImage } from "@/src/components/SafeUriImage";
 
 const EMPTY: Store = {
   id: "", name: "", category: "Mercado", image: "",
@@ -26,15 +28,22 @@ export default function AdminStores() {
   const [stores, setStores] = useState<Store[]>([]);
   const [editing, setEditing] = useState<Store | null>(null);
   const [branchFilter, setBranchFilter] = useState<StoreBranch | "Todos">("Todos");
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     const refresh = async () => {
-      const session = await authService.getSession();
-      if (!session || (session.role !== "admin" && session.role !== "super_admin")) {
-        router.replace("/auth/login");
-        return;
+      try {
+        const session = await authService.getSession();
+        if (!session || (session.role !== "admin" && session.role !== "super_admin")) {
+          router.replace("/auth/login");
+          return;
+        }
+        setStores(await catalogService.listStores());
+        setLoadError("");
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Não foi possível carregar estabelecimentos.");
       }
-      setStores(await catalogService.listStores());
     };
     refresh();
     return catalogService.subscribe(refresh);
@@ -54,26 +63,58 @@ export default function AdminStores() {
       Alert.alert("Ramo obrigatório", "Escolha o ramo do estabelecimento.");
       return;
     }
-    await catalogService.upsertStore({
-      ...editing,
-      name: editing.name.trim(),
-      category: editing.branch,
-      description: editing.description.trim(),
-      image: editing.image.trim(),
-      phone: editing.phone?.trim(),
-      notes: editing.notes?.trim(),
-    });
-    setEditing(null);
+    if (editing.baseFee < 0) {
+      Alert.alert("Taxa inválida", "A taxa base não pode ser negativa.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const rawImage = editing.image?.trim() ?? "";
+      const image = rawImage && !/^https?:\/\//i.test(rawImage)
+        ? await uploadStoreImage(editing.id, rawImage)
+        : rawImage;
+      await catalogService.upsertStore({
+        ...editing,
+        name: editing.name.trim(),
+        category: editing.branch,
+        description: editing.description.trim(),
+        image,
+        phone: editing.phone?.trim(),
+        notes: editing.notes?.trim(),
+      });
+      setEditing(null);
+    } catch (error) {
+      Alert.alert("Não foi possível salvar", error instanceof Error ? error.message : "Tente novamente.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  async function remove(s: Store) {
+  function remove(s: Store) {
     Alert.alert("Remover", `Remover ${s.name}?`, [
       { text: "Cancelar", style: "cancel" },
-      { text: "Remover", style: "destructive", onPress: () => catalogService.deleteStore(s.id) },
+      {
+        text: "Remover", style: "destructive", onPress: async () => {
+          try {
+            await catalogService.deleteStore(s.id);
+          } catch (error) {
+            Alert.alert("Não foi possível remover", error instanceof Error ? error.message : "Tente novamente.");
+          }
+        },
+      },
     ]);
   }
 
   const visibleStores = branchFilter === "Todos" ? stores : stores.filter((s) => s.branch === branchFilter);
+
+  async function selectImage() {
+    try {
+      const image = await pickImageFromGallery();
+      if (image) setEditing((current) => current ? { ...current, image: image.uri } : current);
+    } catch (error) {
+      Alert.alert("Imagem não selecionada", error instanceof Error ? error.message : "Tente novamente.");
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -91,6 +132,7 @@ export default function AdminStores() {
           O Chekou Ganhou é uma plataforma independente de compra assistida e entrega.
           Estabelecimentos de teste não representam parceria oficial, salvo indicação expressa.
         </Text>
+        {loadError ? <Text style={styles.errorNotice}>{loadError}</Text> : null}
         <Text style={styles.label}>Filtrar por ramo</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs }}>
           {(["Todos", ...STORE_BRANCHES] as const).map((branch) => (
@@ -106,6 +148,7 @@ export default function AdminStores() {
         </ScrollView>
         {visibleStores.map((s) => (
           <View key={s.id} style={styles.card}>
+            <SafeUriImage uri={s.image} style={styles.thumb} icon="storefront-outline" iconSize={21} />
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>{s.name}</Text>
               <Text style={styles.muted}>{s.branch} • {s.deliveryTime} • {s.address}</Text>
@@ -174,6 +217,13 @@ export default function AdminStores() {
                 <Field label="Telefone (opcional)" value={editing.phone ?? ""} onChange={(v) => setEditing({ ...editing, phone: v })} testID="store-phone" />
                 <Field label="Tempo estimado" value={editing.deliveryTime} onChange={(v) => setEditing({ ...editing, deliveryTime: v })} testID="store-time" />
                 <Field label="Taxa base (R$)" value={String(editing.baseFee)} onChange={(v) => setEditing({ ...editing, baseFee: Number(v) || 0 })} keyboardType="numeric" testID="store-fee" />
+                {editing.image?.trim() ? <SafeUriImage uri={editing.image} style={styles.preview} icon="storefront-outline" /> : null}
+                <View style={styles.imageActions}>
+                  <Button title="Selecionar imagem" variant="secondary" onPress={selectImage} testID="store-pick-image" style={styles.imageButton} />
+                  {editing.image?.trim() ? (
+                    <Button title="Remover imagem" variant="ghost" onPress={() => setEditing({ ...editing, image: "" })} testID="store-remove-image" style={styles.imageButton} />
+                  ) : null}
+                </View>
                 <Field label="Imagem (URL)" value={editing.image} onChange={(v) => setEditing({ ...editing, image: v })} testID="store-img" />
                 <Field label="Observações" value={editing.notes ?? ""} onChange={(v) => setEditing({ ...editing, notes: v })} testID="store-notes" multiline />
 
@@ -182,7 +232,7 @@ export default function AdminStores() {
                   <Text style={styles.toggleLabel}>{editing.active ? "Ativo" : "Inativo"}</Text>
                 </TouchableOpacity>
 
-                <Button title="Salvar" onPress={save} testID="store-save" />
+                <Button title="Salvar" onPress={save} loading={saving} testID="store-save" />
                 <Button title="Cancelar" variant="ghost" onPress={() => setEditing(null)} testID="store-cancel" />
               </ScrollView>
             </KeyboardAvoidingView>
@@ -230,6 +280,8 @@ const styles = StyleSheet.create({
     flexDirection: "row", gap: spacing.sm, padding: spacing.md, backgroundColor: colors.surface,
     borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borderLight, alignItems: "center",
   },
+  thumb: { width: 52, height: 52, borderRadius: radius.md },
+  thumbFallback: { width: 52, height: 52, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: colors.primarySoft },
   title: { fontWeight: "700", color: colors.textPrimary, fontSize: fontSize.bodyLarge },
   muted: { color: colors.textSecondary, fontSize: fontSize.small, marginTop: 2 },
   badges: { flexDirection: "row", gap: 6, marginTop: 6 },
@@ -237,6 +289,9 @@ const styles = StyleSheet.create({
   badgeText: { fontWeight: "700", fontSize: fontSize.small },
   label: { color: colors.textSecondary, fontWeight: "600", fontSize: fontSize.small },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, color: colors.textPrimary, backgroundColor: colors.surface, minHeight: 50 },
+  preview: { width: "100%", height: 170, borderRadius: radius.md, backgroundColor: colors.borderLight },
+  imageActions: { flexDirection: "row", gap: spacing.sm },
+  imageButton: { flex: 1 },
   typeRow: { flexDirection: "row", gap: spacing.sm },
   typeBtn: { flex: 1, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, alignItems: "center", backgroundColor: colors.surface },
   typeActive: { backgroundColor: colors.primary, borderColor: colors.primary },
@@ -248,4 +303,5 @@ const styles = StyleSheet.create({
   toggle: { width: 36, height: 22, borderRadius: 11, backgroundColor: colors.border },
   toggleOn: { backgroundColor: colors.primary },
   toggleLabel: { fontWeight: "700", color: colors.textSecondary },
+  errorNotice: { backgroundColor: colors.errorSoft, color: colors.error, padding: spacing.sm, borderRadius: radius.md, fontSize: fontSize.small, fontWeight: "700" },
 });

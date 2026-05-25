@@ -1,6 +1,6 @@
 // authService — local/offline authentication backed by AsyncStorage.
 import { storage } from "@/src/utils/storage";
-import { USE_SUPABASE, friendlySupabaseError } from "@/src/config/runtime";
+import { USE_SUPABASE, friendlySupabaseError, isSupabaseUnavailable } from "@/src/config/runtime";
 import { supabase } from "@/src/lib/supabase";
 
 export type Role = "client" | "driver" | "admin" | "super_admin";
@@ -54,6 +54,10 @@ const SEED_USERS: User[] = [
 
 let cache: User[] | null = null;
 const listeners = new Set<() => void>();
+
+function isUuid(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
 
 async function load(): Promise<User[]> {
   if (cache) return cache;
@@ -120,16 +124,22 @@ export const authService = {
   async getAllUsers(): Promise<User[]> {
     if (USE_SUPABASE && supabase) {
       const { data, error } = await supabase.from("profiles").select("*, driver_wallets(operational_limit)").order("created_at", { ascending: false });
-      if (error) throw new Error(friendlySupabaseError(error, "Não foi possível listar usuários."));
-      return (data ?? []).map(mapProfile);
+      if (!error) return (data ?? []).map(mapProfile);
+      if (!isSupabaseUnavailable(error)) throw new Error(friendlySupabaseError(error, "Não foi possível listar usuários."));
+      console.warn("Supabase indisponível ao listar usuários; usando dados locais.", error);
     }
     return [...(await load())];
   },
 
   async getById(id: string): Promise<User | undefined> {
-    if (USE_SUPABASE && supabase) {
-      const profile = await getSupabaseProfile(id);
-      return profile ?? undefined;
+    if (USE_SUPABASE && supabase && isUuid(id)) {
+      try {
+        const profile = await getSupabaseProfile(id);
+        return profile ?? undefined;
+      } catch (error) {
+        if (!isSupabaseUnavailable(error)) throw error;
+        console.warn("Supabase indisponível ao carregar usuário; usando dados locais.", error);
+      }
     }
     const users = await load();
     return users.find((u) => u.id === id);
@@ -141,14 +151,24 @@ export const authService = {
         email: email.trim(),
         password,
       });
-      if (error) return null;
-      const profile = data.user ? await getSupabaseProfile(data.user.id) : null;
-      if (!profile) {
-        await supabase.auth.signOut();
-        throw new Error("Perfil não encontrado. Aplique a migration do Supabase antes de entrar.");
+      if (!error) {
+        try {
+          const profile = data.user ? await getSupabaseProfile(data.user.id) : null;
+          if (!profile) {
+            await supabase.auth.signOut();
+            throw new Error("Perfil não encontrado. Aplique a migration do Supabase antes de entrar.");
+          }
+          listeners.forEach((l) => l());
+          return profile;
+        } catch (profileError) {
+          if (!isSupabaseUnavailable(profileError)) throw profileError;
+          console.warn("Supabase indisponível ao carregar sessão; tentando login local.", profileError);
+        }
+      } else if (!isSupabaseUnavailable(error)) {
+        return null;
+      } else {
+        console.warn("Supabase indisponível no login; tentando modo local.", error);
       }
-      listeners.forEach((l) => l());
-      return profile;
     }
     const users = await load();
     const u = users.find(
@@ -172,9 +192,21 @@ export const authService = {
           },
         },
       });
-      if (error || !data.user) return null;
-      if (!data.session) {
-        return {
+      if (!error && data.user) {
+        if (!data.session) {
+          return {
+            id: data.user.id,
+            name: input.name.trim(),
+            email: input.email.trim(),
+            phone: input.phone.trim(),
+            role: "client",
+            driverStatus: "none",
+            createdAt: Date.now(),
+          };
+        }
+        const profile = await getSupabaseProfile(data.user.id);
+        listeners.forEach((l) => l());
+        return profile ?? {
           id: data.user.id,
           name: input.name.trim(),
           email: input.email.trim(),
@@ -184,17 +216,8 @@ export const authService = {
           createdAt: Date.now(),
         };
       }
-      const profile = await getSupabaseProfile(data.user.id);
-      listeners.forEach((l) => l());
-      return profile ?? {
-        id: data.user.id,
-        name: input.name.trim(),
-        email: input.email.trim(),
-        phone: input.phone.trim(),
-        role: "client",
-        driverStatus: "none",
-        createdAt: Date.now(),
-      };
+      if (!isSupabaseUnavailable(error)) return null;
+      console.warn("Supabase indisponível no cadastro; usando modo local.", error);
     }
     const users = await load();
     if (users.find((u) => u.email.toLowerCase() === input.email.trim().toLowerCase())) return null;
@@ -218,11 +241,19 @@ export const authService = {
   async getSession(): Promise<User | null> {
     if (USE_SUPABASE && supabase) {
       const { data, error } = await supabase.auth.getSession();
-      if (error || !data.session?.user) return null;
-      try {
-        return await getSupabaseProfile(data.session.user.id);
-      } catch {
+      if (!error && data.session?.user) {
+        try {
+          return await getSupabaseProfile(data.session.user.id);
+        } catch (profileError) {
+          if (!isSupabaseUnavailable(profileError)) return null;
+          console.warn("Supabase indisponível ao restaurar sessão; tentando sessão local.", profileError);
+        }
+      } else if (!error) {
         return null;
+      } else if (!isSupabaseUnavailable(error)) {
+        return null;
+      } else {
+        console.warn("Supabase indisponível ao restaurar sessão; tentando sessão local.", error);
       }
     }
     const id = await storage.getItem<string>(SESSION_KEY, "");
@@ -251,7 +282,7 @@ export const authService = {
   },
 
   async update(id: string, patch: Partial<User>): Promise<User | undefined> {
-    if (USE_SUPABASE && supabase) {
+    if (USE_SUPABASE && supabase && isUuid(id)) {
       const next: Record<string, unknown> = {};
       if (patch.name !== undefined) next.name = patch.name;
       if (patch.email !== undefined) next.email = patch.email;
@@ -289,7 +320,7 @@ export const authService = {
   },
 
   async remove(id: string): Promise<void> {
-    if (USE_SUPABASE) {
+    if (USE_SUPABASE && isUuid(id)) {
       await this.update(id, { driverStatus: "blocked" });
       return;
     }

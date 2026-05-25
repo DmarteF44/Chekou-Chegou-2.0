@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Image } from "react-native";
+import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, spacing, fontSize, radius } from "@/src/theme/colors";
+import { SafeUriImage } from "@/src/components/SafeUriImage";
 import { Header } from "@/src/components/Header";
 import { DemoNotice } from "@/src/components/DemoNotice";
 import { Promotion } from "@/src/data/mock";
@@ -27,7 +28,7 @@ export default function Promotions() {
           </View>
         ) : promotions.map((p) => (
           <View key={p.id} style={styles.card} testID={`promotion-${p.id}`}>
-            {p.image?.trim() ? <Image source={{ uri: p.image.trim() }} style={styles.img} /> : <View style={styles.imgFallback} />}
+            <SafeUriImage uri={p.image} style={styles.img} icon="pricetag-outline" />
             <View style={styles.badge}><Text style={styles.badgeText}>{p.discount}</Text></View>
             <View style={styles.body}>
               <Text style={styles.title}>{p.title}</Text>

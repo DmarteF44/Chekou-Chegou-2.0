@@ -87,7 +87,7 @@ export default function DriverHome() {
           <Ionicons name="medal" size={20} color={levelInfo.color} />
           <View style={{ flex: 1 }}>
             <Text style={styles.levelTitle} testID="driver-level-name">Nível {level} • {levelInfo.name}</Text>
-            <Text style={styles.levelHint} testID="driver-level-limit">Limite operacional: até R$ {levelInfo.limit}</Text>
+            <Text style={styles.levelHint} testID="driver-level-limit">Limite operacional: até {money(me.operationalLimit ?? levelInfo.limit)}</Text>
           </View>
         </View>
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, FlatList } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,6 +11,7 @@ import { DemoNotice } from "@/src/components/DemoNotice";
 import { authService, User } from "@/src/services/authService";
 import { catalogService, getStoreBranch, Store, StoreBranch } from "@/src/services/catalogService";
 import { marketingService } from "@/src/services/marketingService";
+import { SafeUriImage } from "@/src/components/SafeUriImage";
 
 const CLIENT_BRANCHES: StoreBranch[] = ["Mercado", "Farmácia", "Eletrônicos"];
 
@@ -40,7 +41,7 @@ export default function ClientHome() {
         const all = await orderStore.getAll();
         setActiveOrders(all.filter((o) => o.clientId === session.id && o.status !== "Entregue" && o.status !== "Cancelado"));
         setMe(session);
-        setStores(await catalogService.listStores({ activeOnly: true }));
+        setStores((await catalogService.listStores({ activeOnly: true })).filter((store) => store.type !== "em_breve"));
         setPromotions(await marketingService.listPromotions({ activeOnly: true }));
         setError("");
       } catch (reason) {
@@ -128,7 +129,7 @@ export default function ClientHome() {
               onPress={() => router.push("/client/promotions")}
               testID={`promo-card-${item.id}`}
             >
-              {item.image?.trim() ? <Image source={{ uri: item.image.trim() }} style={styles.promoImg} /> : <View style={styles.promoImgFallback} />}
+              <SafeUriImage uri={item.image} style={styles.promoImg} icon="pricetag-outline" />
               <View style={styles.discountBadge}>
                 <Text style={styles.discountText}>{item.discount}</Text>
               </View>
@@ -186,7 +187,6 @@ export default function ClientHome() {
         <Text style={styles.sectionTitle}>Estabelecimentos de {selectedBranch}</Text>
         <View style={{ paddingHorizontal: spacing.md, gap: spacing.sm }}>
           {storesByBranch.map((e) => {
-            const image = e.image?.trim();
             const branch = getStoreBranch(e);
             const icon = iconForStore(branch);
             return (
@@ -196,11 +196,7 @@ export default function ClientHome() {
               onPress={() => router.push(`/client/store/${e.id}`)}
               testID={`store-card-${e.id}`}
             >
-              {image ? (
-                <Image source={{ uri: image }} style={styles.storeImg} />
-              ) : (
-                <View style={styles.storeImgFallback}><Ionicons name={icon} size={24} color={colors.primary} /></View>
-              )}
+              <SafeUriImage uri={e.image} style={styles.storeImg} icon={icon} iconSize={24} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.storeName} numberOfLines={1}>{e.name}</Text>
                 <Text style={styles.storeCat} numberOfLines={2}>{branch} • {e.description}</Text>

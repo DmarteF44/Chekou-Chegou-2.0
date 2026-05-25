@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TextInput, Image, KeyboardAvoidingView, Platform, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -14,6 +14,7 @@ import {
   catalogService, Product, Store, categoriesForBranch, getStoreBranch,
 } from "@/src/services/catalogService";
 import { OrderItem } from "@/src/data/mock";
+import { SafeUriImage } from "@/src/components/SafeUriImage";
 
 export default function StoreOrder() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -21,8 +22,6 @@ export default function StoreOrder() {
   const [store, setStore] = useState<Store | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [customText, setCustomText] = useState("");
-  const [customValue, setCustomValue] = useState("");
   const [notes, setNotes] = useState("");
   const [search, setSearch] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -59,10 +58,9 @@ export default function StoreOrder() {
       .filter((item) => item.quantity > 0);
   }, [products, quantities]);
 
-  const customSubtotal = Math.max(0, Number(customValue.replace(",", ".")) || 0);
   const cartSubtotal = selectedItems.reduce((acc, item) => acc + item.total, 0);
-  const hasCustom = customText.trim().length > 0 && customSubtotal > 0;
-  const valid = !!store && (selectedItems.length > 0 || hasCustom);
+  const canPurchase = !!store?.active && store.type !== "em_breve";
+  const valid = canPurchase && selectedItems.length > 0;
   const storeBranch = getStoreBranch(store);
   const isPharmacy = storeBranch === "Farmácia" || store?.id === "farmacia-parceira";
   const storeIcon: keyof typeof Ionicons.glyphMap = storeBranch === "Eletrônicos" ? "hardware-chip" : isPharmacy ? "medical" : "storefront";
@@ -93,24 +91,14 @@ export default function StoreOrder() {
   }
 
   function next() {
-    if (!store) return;
-    const orderItems = [...selectedItems];
-    if (hasCustom) {
-      orderItems.push({
-        name: customText.trim(),
-        quantity: 1,
-        unitPrice: customSubtotal,
-        total: customSubtotal,
-        custom: true,
-      });
-    }
+    if (!store || !canPurchase) return;
     router.push({
       pathname: "/client/checkout",
       params: {
         storeId: store.id,
         storeName: store.name,
         deliveryFee: String(store.baseFee),
-        itemsJson: JSON.stringify(orderItems),
+        itemsJson: JSON.stringify(selectedItems),
         notes,
       },
     });
@@ -134,11 +122,7 @@ export default function StoreOrder() {
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <DemoNotice />
           <View style={styles.storeHeader}>
-            {store.image?.trim() ? (
-              <Image source={{ uri: store.image.trim() }} style={styles.storeImg} />
-            ) : (
-              <View style={styles.storeImgFallback}><Ionicons name={storeIcon} size={24} color={colors.primary} /></View>
-            )}
+            <SafeUriImage uri={store.image} style={styles.storeImg} icon={storeIcon} iconSize={24} />
             <View style={{ flex: 1 }}>
               <Text style={styles.storeName}>{store.name}</Text>
               <Text style={styles.storeDesc}>{store.description}</Text>
@@ -154,6 +138,13 @@ export default function StoreOrder() {
               </Text>
             </View>
           )}
+
+          {!canPurchase ? (
+            <View style={styles.pharmacyWarn}>
+              <Ionicons name="information-circle" size={18} color={colors.warning} />
+              <Text style={styles.pharmacyText}>Este estabelecimento não está disponível para novos pedidos agora.</Text>
+            </View>
+          ) : null}
 
           <Text style={styles.sectionTitle}>Produtos disponíveis</Text>
           <View style={styles.searchBox}>
@@ -183,6 +174,7 @@ export default function StoreOrder() {
                       <View style={[styles.check, qty > 0 && styles.checkOn]}>
                         {qty > 0 ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
                       </View>
+                      <SafeUriImage uri={p.imageUrl} style={styles.productImage} icon="cube-outline" iconSize={18} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.productName}>{p.name}</Text>
                         <Text style={styles.productCat}>{p.category}</Text>
@@ -209,36 +201,11 @@ export default function StoreOrder() {
             </View>
           ))}
 
-          <Text style={styles.sectionTitle}>Item personalizado opcional</Text>
-          <View style={styles.card}>
-            <TextInput
-              value={customText}
-              onChangeText={setCustomText}
-              placeholder="Ex.: fruta da estação, marca específica..."
-              placeholderTextColor={colors.textTertiary}
-              multiline
-              style={[styles.input, styles.textareaSm]}
-              testID="custom-item-input"
-            />
-            <View style={styles.currencyRow}>
-              <Text style={styles.currencyPrefix}>R$</Text>
-              <TextInput
-                value={customValue}
-                onChangeText={setCustomValue}
-                placeholder="Valor estimado"
-                placeholderTextColor={colors.textTertiary}
-                keyboardType="decimal-pad"
-                style={[styles.input, { flex: 1 }]}
-                testID="custom-item-value"
-              />
-            </View>
-          </View>
-
-          <Text style={styles.sectionTitle}>Observações</Text>
+          <Text style={styles.sectionTitle}>Observações gerais</Text>
           <TextInput
             value={notes}
             onChangeText={setNotes}
-            placeholder="Marcas preferidas, substituições aceitas, endereço complementar."
+            placeholder="Ex.: tocar interfone ou aceitar substituição equivalente. Selecione produtos somente pelo catálogo."
             placeholderTextColor={colors.textTertiary}
             multiline
             style={[styles.input, styles.textareaSm]}
@@ -250,12 +217,6 @@ export default function StoreOrder() {
               <Text style={styles.summaryLabel}>Subtotal produtos</Text>
               <Text style={styles.summaryValue}>{money(cartSubtotal)}</Text>
             </View>
-            {customSubtotal > 0 ? (
-              <View style={styles.summaryLine}>
-                <Text style={styles.summaryLabel}>Subtotal personalizado</Text>
-                <Text style={styles.summaryValue}>{money(customSubtotal)}</Text>
-              </View>
-            ) : null}
           </View>
 
           <Button
@@ -300,6 +261,11 @@ const styles = StyleSheet.create({
   productCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.borderLight },
   productSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   productMain: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  productImage: { width: 46, height: 46, borderRadius: radius.md },
+  productImageFallback: {
+    width: 46, height: 46, borderRadius: radius.md, alignItems: "center",
+    justifyContent: "center", backgroundColor: colors.primarySoft,
+  },
   productName: { color: colors.textPrimary, fontWeight: "800", fontSize: fontSize.bodyLarge },
   productCat: { color: colors.textSecondary, fontSize: fontSize.small, marginTop: 2 },
   price: { color: colors.primary, fontWeight: "800", fontSize: fontSize.bodyLarge },
