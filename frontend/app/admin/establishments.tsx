@@ -129,7 +129,7 @@ export default function AdminStores() {
       <ScrollView contentContainerStyle={styles.container}>
         <DemoNotice />
         <Text style={styles.notice}>
-          O Chekou Ganhou é uma plataforma independente de compra assistida e entrega.
+          O Chekou Chegou é uma plataforma independente de compra assistida e entrega.
           Estabelecimentos de teste não representam parceria oficial, salvo indicação expressa.
         </Text>
         {loadError ? <Text style={styles.errorNotice}>{loadError}</Text> : null}

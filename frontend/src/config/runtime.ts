@@ -1,8 +1,8 @@
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? "";
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
 
-// DIAG v2: isolate Android bootstrap from remote auth for one investigative build.
-// Restore to false after the device test identifies the failing stage.
+// DIAG v4: isolate Android navigation from remote auth for one investigative build.
+// Restore to false only after installed-device navigation succeeds.
 export const FORCE_LOCAL_MODE = true;
 
 function isValidSupabaseUrl(value: string): boolean {

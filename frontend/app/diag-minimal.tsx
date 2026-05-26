@@ -1,13 +1,22 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
+import { recordDestinationMount } from "@/src/utils/navigationDiagnostic";
 
 export default function DiagnosticMinimalRoute() {
   const router = useRouter();
+  const [mountedEvent, setMountedEvent] = useState("registrando montagem...");
+
+  useEffect(() => {
+    void recordDestinationMount("diag-minimal montou", "/diag-minimal").then(() => {
+      setMountedEvent("Registro persistido: diag-minimal montou");
+    });
+  }, []);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>DIAG v3 • rota mínima abriu</Text>
+      <Text style={styles.title}>DIAG v4 • rota mínima realmente montou</Text>
+      <Text style={styles.detail}>{mountedEvent}</Text>
       <TouchableOpacity style={styles.button} onPress={() => router.replace("/")} testID="diag-minimal-back">
         <Text style={styles.buttonText}>Voltar</Text>
       </TouchableOpacity>
@@ -28,6 +37,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   title: { color: "#111827", fontSize: 18, fontWeight: "700", textAlign: "center" },
+  detail: { color: "#4B5563", fontSize: 14, textAlign: "center" },
   button: {
     backgroundColor: "#059669",
     borderRadius: 8,

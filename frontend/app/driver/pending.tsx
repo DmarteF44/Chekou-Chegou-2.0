@@ -41,7 +41,7 @@ export default function PendingScreen() {
         </View>
         <Text style={styles.title}>Cadastro em análise</Text>
         <Text style={styles.body}>
-          Recebemos sua solicitação para ser Motorista Parceiro do Chekou Ganhou.{"\n\n"}
+          Recebemos sua solicitação para ser Motorista Parceiro do Chekou Chegou.{"\n\n"}
           Assim que seu cadastro for aprovado, você poderá receber pedidos disponíveis em Jataí-GO.
         </Text>
 

@@ -107,7 +107,7 @@ export default function PartnerSignup() {
               {accept && <Ionicons name="checkmark" size={14} color={colors.white} />}
             </View>
             <Text style={styles.checkText}>
-              Li e aceito os termos de uso e a política de pagamentos do Chekou Ganhou.
+              Li e aceito os termos de uso e a política de pagamentos do Chekou Chegou.
             </Text>
           </TouchableOpacity>
 

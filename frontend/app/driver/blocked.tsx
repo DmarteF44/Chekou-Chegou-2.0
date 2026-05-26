@@ -21,7 +21,7 @@ export default function BlockedScreen() {
         </View>
         <Text style={styles.title}>Conta bloqueada</Text>
         <Text style={styles.body}>
-          Sua conta de Motorista Parceiro foi bloqueada. Entre em contato com o suporte do Chekou Ganhou para mais informações.
+          Sua conta de Motorista Parceiro foi bloqueada. Entre em contato com o suporte do Chekou Chegou para mais informações.
         </Text>
         <View style={{ height: spacing.xl }} />
         <Button title="Sair" onPress={logout} variant="secondary" testID="blocked-logout" />

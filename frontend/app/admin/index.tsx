@@ -331,7 +331,7 @@ export default function AdminIndex() {
         {tab === "Lojas" && (
           <>
             <Text style={styles.notice}>
-              O Chekou Ganhou é uma plataforma independente de compra assistida e entrega.
+              O Chekou Chegou é uma plataforma independente de compra assistida e entrega.
               Estabelecimentos exibidos como mais pedidos não representam parceria oficial,
               salvo indicação expressa.
             </Text>

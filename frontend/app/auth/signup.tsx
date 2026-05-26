@@ -59,7 +59,7 @@ export default function Signup() {
           <Field label="Senha" value={pw} onChange={setPw} secure testID="signup-password" />
           <Button title="Criar conta" onPress={submit} loading={loading} testID="signup-submit" />
           <Text style={styles.hint}>
-            Ao criar conta você aceita os termos de uso do Chekou Ganhou. Você poderá solicitar virar Motorista Parceiro depois.
+            Ao criar conta você aceita os termos de uso do Chekou Chegou. Você poderá solicitar virar Motorista Parceiro depois.
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
