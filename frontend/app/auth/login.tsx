@@ -16,7 +16,7 @@ export default function LoginDiagnosticMinimal() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Chekou Chegou</Text>
-      <Text style={styles.title}>DIAG v4 • login mínimo realmente montou</Text>
+      <Text style={styles.title}>DIAG v5 • login mínimo montou com Slot</Text>
       <Text style={styles.detail}>{mountedEvent}</Text>
       <Text style={styles.detail}>Sem asset, componentes customizados ou serviço de autenticação.</Text>
       <TouchableOpacity style={styles.button} onPress={() => router.replace("/")} testID="diag-login-back">

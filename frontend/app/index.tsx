@@ -38,10 +38,10 @@ function describeError(error: unknown): DiagnosticError {
 }
 
 // Auth gate / splash router.
-// DIAG v4 deliberately holds automatic auth navigation while Android route mounting is isolated.
+// DIAG v5 deliberately holds automatic auth navigation while Android route mounting is isolated.
 export default function Index() {
   const router = useRouter();
-  const [bootStage, setBootStage] = useState("DIAG v4 • render inicial");
+  const [bootStage, setBootStage] = useState("DIAG v5 • render inicial");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [bootResult, setBootResult] = useState("");
   const [bootError, setBootError] = useState<DiagnosticError | null>(null);
@@ -75,10 +75,10 @@ export default function Index() {
       }
     });
 
-    setBootStage("DIAG v4 • useEffect iniciado");
+    setBootStage("DIAG v5 • useEffect iniciado");
 
     async function bootstrap() {
-      setBootStage("DIAG v4 • solicitando sessão local");
+      setBootStage("DIAG v5 • solicitando sessão local");
       setBootError(null);
       setLocalTrace("");
       try {
@@ -94,12 +94,12 @@ export default function Index() {
         );
         if (!u) {
           setBootResult("Resultado: sessão resolvida sem usuário; destino seria login.");
-          setBootStage("DIAG v4 • bootstrap local concluído");
+          setBootStage("DIAG v5 • bootstrap local concluído");
           return;
         }
         if (u.role === "admin" || u.role === "super_admin") {
           setBootResult("Resultado: sessão Admin resolvida; navegação suspensa no diagnóstico.");
-          setBootStage("DIAG v4 • bootstrap local concluído");
+          setBootStage("DIAG v5 • bootstrap local concluído");
           return;
         }
         if (u.role === "driver") {
@@ -107,17 +107,17 @@ export default function Index() {
             ? "entregador"
             : u.driverStatus === "blocked" ? "bloqueado" : "pendente";
           setBootResult(`Resultado: sessão Entregador resolvida (${destination}); navegação suspensa no diagnóstico.`);
-          setBootStage("DIAG v4 • bootstrap local concluído");
+          setBootStage("DIAG v5 • bootstrap local concluído");
           return;
         }
         setBootResult("Resultado: sessão Cliente resolvida; navegação suspensa no diagnóstico.");
-        setBootStage("DIAG v4 • bootstrap local concluído");
+        setBootStage("DIAG v5 • bootstrap local concluído");
       } catch (error) {
         if (cancelled) return;
         const detail = describeError(error);
         setBootError(detail);
         setBootResult("");
-        setBootStage("DIAG v4 • erro bootstrap local");
+        setBootStage("DIAG v5 • erro bootstrap local");
         console.warn(`[bootstrap] Falha local: ${detail.name}: ${detail.message}`);
       }
     }
@@ -141,42 +141,42 @@ export default function Index() {
 
   async function pushMinimalRoute() {
     await trackAction("Router push rota mínima", "/diag-minimal");
-    setBootStage("DIAG v4 • router.push solicitado");
+    setBootStage("DIAG v5 • router.push solicitado");
     router.push("/diag-minimal");
   }
 
   async function replaceMinimalRoute() {
     await trackAction("Router replace rota mínima", "/diag-minimal");
-    setBootStage("DIAG v4 • router.replace solicitado");
+    setBootStage("DIAG v5 • router.replace solicitado");
     router.replace("/diag-minimal");
   }
 
   async function replaceMinimalLogin() {
     await trackAction("Router replace login mínimo", "/auth/login");
-    setBootStage("DIAG v4 • login mínimo solicitado");
+    setBootStage("DIAG v5 • login mínimo solicitado");
     router.replace("/auth/login");
   }
 
   async function armRedirectNextBoot() {
     await trackAction("Redirect rota mínima no próximo boot", "/diag-minimal", true);
     setBootResult("Redirect armado. Feche e reabra o app para testar.");
-    setBootStage("DIAG v4 • redirect pendente");
+    setBootStage("DIAG v5 • redirect pendente");
   }
 
   async function clearOnlyLocalSession() {
-    setBootStage("DIAG v4 • limpando apenas sessão local");
+    setBootStage("DIAG v5 • limpando apenas sessão local");
     setBootError(null);
     try {
       await authService.clearLocalSession();
       setLocalStage("sessão local removida");
       setLocalTrace("sessão local removida manualmente");
       setBootResult("Ação: somente a sessão local foi limpa. Reinicie o app para testar o bootstrap.");
-      setBootStage("DIAG v4 • sessão local limpa");
+      setBootStage("DIAG v5 • sessão local limpa");
     } catch (error) {
       const detail = describeError(error);
       setBootError(detail);
       setBootResult("");
-      setBootStage("DIAG v4 • falha ao limpar sessão local");
+      setBootStage("DIAG v5 • falha ao limpar sessão local");
     }
   }
 
@@ -185,7 +185,7 @@ export default function Index() {
   if (screenMode === "inline-minimal") {
     return (
       <View style={styles.inlineContainer}>
-        <Text style={styles.inlineTitle}>DIAG v4 • tela inline abriu</Text>
+        <Text style={styles.inlineTitle}>DIAG v5 • tela inline abriu</Text>
         <Text style={styles.diagText}>Esta tela foi renderizada no próprio index, sem Expo Router.</Text>
         <TouchableOpacity style={styles.escapeButton} onPress={() => setScreenMode("bootstrap")}>
           <Text style={styles.escapeButtonText}>Voltar ao diagnóstico</Text>
@@ -198,7 +198,7 @@ export default function Index() {
     return (
       <View style={styles.inlineContainer}>
         <Text style={styles.brand}>Chekou Chegou</Text>
-        <Text style={styles.inlineTitle}>DIAG v4 • login inline abriu</Text>
+        <Text style={styles.inlineTitle}>DIAG v5 • login inline abriu</Text>
         <TextInput
           value={inlineEmail}
           onChangeText={setInlineEmail}
@@ -235,8 +235,9 @@ export default function Index() {
       <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.md }} />
       <View style={styles.diagPanel}>
         <Text style={styles.diagTitle}>{bootStage}</Text>
-        <Text style={styles.diagText}>DIAG v4 • {elapsedSeconds}s • modo local forçado</Text>
-        <Text style={styles.diagText}>Stack animation: none</Text>
+        <Text style={styles.diagText}>DIAG v5 • layout usando Slot sem Stack nativo</Text>
+        <Text style={styles.diagText}>DIAG v5 • {elapsedSeconds}s • modo local forçado</Text>
+        <Text style={styles.diagText}>Layout atual: Slot sem Stack nativo</Text>
         <Text style={styles.diagText}>Montagem index: {navigationState?.indexMountCount ?? "lendo..."}</Text>
         <Text style={styles.diagText}>Última ação: {navigationState?.lastAction ?? "lendo..."}</Text>
         <Text style={styles.diagText}>Última rota solicitada: {navigationState?.lastRoute ?? "lendo..."}</Text>

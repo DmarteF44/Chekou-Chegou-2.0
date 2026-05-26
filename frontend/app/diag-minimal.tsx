@@ -15,7 +15,7 @@ export default function DiagnosticMinimalRoute() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>DIAG v4 • rota mínima realmente montou</Text>
+      <Text style={styles.title}>DIAG v5 • rota mínima montou com Slot</Text>
       <Text style={styles.detail}>{mountedEvent}</Text>
       <TouchableOpacity style={styles.button} onPress={() => router.replace("/")} testID="diag-minimal-back">
         <Text style={styles.buttonText}>Voltar</Text>

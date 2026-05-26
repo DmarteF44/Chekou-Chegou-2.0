@@ -40,8 +40,8 @@ export class DiagnosticErrorBoundary extends Component<Props, State> {
 
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>DIAG v4 • erro de renderização</Text>
-        <Text style={styles.text}>Contexto: Stack / rota atual</Text>
+        <Text style={styles.title}>DIAG v5 • erro de renderização</Text>
+        <Text style={styles.text}>Contexto: rota atual</Text>
         <Text style={styles.text}>Tipo: {sanitizeDiagnosticText(error.name || "Error")}</Text>
         <Text style={styles.text}>Mensagem: {sanitizeDiagnosticText(error.message || "Erro sem mensagem.")}</Text>
         <TouchableOpacity style={styles.button} onPress={this.retry} testID="diag-render-retry">

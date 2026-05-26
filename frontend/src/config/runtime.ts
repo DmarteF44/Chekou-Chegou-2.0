@@ -1,7 +1,7 @@
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? "";
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
 
-// DIAG v4: isolate Android navigation from remote auth for one investigative build.
+// DIAG v5: isolate Android navigation from remote auth for one investigative build.
 // Restore to false only after installed-device navigation succeeds.
 export const FORCE_LOCAL_MODE = true;
 
