@@ -28,6 +28,8 @@ export const AUTH_BOOT_TIMEOUT_MS = 6000;
 const AUTH_ACTION_TIMEOUT_MS = 8000;
 const AUTH_CLEANUP_TIMEOUT_MS = 1500;
 
+export type LocalAuthStageReporter = (stage: string) => void;
+
 const SEED_USERS: User[] = [
   {
     id: "u_client_local", name: "Maria Cliente", email: "cliente@chekou.local",
@@ -63,33 +65,81 @@ function isUuid(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 }
 
-async function load(): Promise<User[]> {
-  if (cache) return cache;
-  await ensureSeed();
+function reportLocalStage(report: LocalAuthStageReporter | undefined, stage: string) {
+  report?.(stage);
+}
+
+function isStoredUser(value: unknown): value is User {
+  if (!value || typeof value !== "object") return false;
+  const user = value as Partial<User>;
+  return typeof user.id === "string"
+    && typeof user.email === "string"
+    && typeof user.name === "string"
+    && typeof user.role === "string"
+    && typeof user.driverStatus === "string";
+}
+
+async function readStoredUsers(report?: LocalAuthStageReporter): Promise<User[] | null> {
+  reportLocalStage(report, "leitura users key");
   const raw = (await storage.getItem<string>(USERS_KEY, "")) || "";
-  cache = raw ? (JSON.parse(raw) as User[]) : [];
+  if (!raw) return [];
+
+  reportLocalStage(report, "parse users");
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.every(isStoredUser)) {
+      throw new Error("Estrutura local de usuários inválida.");
+    }
+    return parsed;
+  } catch {
+    console.warn("[auth] Dados locais de usuários inválidos; recriando somente o seed local.");
+    await storage.removeItem(USERS_KEY);
+    cache = null;
+    reportLocalStage(report, "parse users inválido; recriando seed local");
+    return null;
+  }
+}
+
+async function load(report?: LocalAuthStageReporter): Promise<User[]> {
+  if (cache) return cache;
+  cache = await ensureSeed(report);
   return cache!;
 }
 
 async function persist() {
-  await storage.setItem(USERS_KEY, JSON.stringify(cache ?? []));
+  const written = await storage.setItem(USERS_KEY, JSON.stringify(cache ?? []));
+  if (!written) throw new Error("Não foi possível gravar usuários locais.");
   listeners.forEach((l) => l());
 }
 
-async function ensureSeed() {
+async function ensureSeed(report?: LocalAuthStageReporter): Promise<User[]> {
+  reportLocalStage(report, "seed local");
   const seeded = await storage.getItem<string>(SEED_KEY, "");
-  if (seeded === SEED_VERSION) return;
-  const raw = (await storage.getItem<string>(USERS_KEY, "")) || "";
-  const existing = raw ? (JSON.parse(raw) as User[]) : [];
+  const storedUsers = await readStoredUsers(report);
+  if (seeded === SEED_VERSION && storedUsers !== null && storedUsers.length > 0) return storedUsers;
+
+  const existing = storedUsers ?? [];
   const byEmail = new Map(existing.map((u) => [u.email.toLowerCase(), u]));
   for (const seed of SEED_USERS) {
     const key = seed.email.toLowerCase();
     byEmail.set(key, byEmail.has(key) ? { ...byEmail.get(key)!, ...seed } : seed);
   }
   const merged = Array.from(byEmail.values());
-  await storage.setItem(USERS_KEY, JSON.stringify(merged));
-  await storage.setItem(SEED_KEY, SEED_VERSION);
+  const usersWritten = await storage.setItem(USERS_KEY, JSON.stringify(merged));
+  const versionWritten = await storage.setItem(SEED_KEY, SEED_VERSION);
+  if (!usersWritten || !versionWritten) {
+    throw new Error("Não foi possível gravar o seed local.");
+  }
   cache = merged;
+  reportLocalStage(
+    report,
+    storedUsers === null
+      ? "parse users inválido; seed local recriado"
+      : seeded === SEED_VERSION && storedUsers.length === 0
+        ? "users vazio; seed local recriado"
+      : "seed local pronto",
+  );
+  return merged;
 }
 
 function mapProfile(row: any): User {
@@ -125,11 +175,23 @@ async function getSupabaseProfile(userId: string): Promise<User | null> {
   return data ? mapProfile(data) : null;
 }
 
-async function getLocalSession(): Promise<User | null> {
+async function getLocalSession(report?: LocalAuthStageReporter): Promise<User | null> {
+  reportLocalStage(report, "leitura session key");
   const id = await storage.getItem<string>(SESSION_KEY, "");
-  if (!id) return null;
-  const users = await load();
-  return users.find((user) => user.id === id) ?? null;
+  if (!id) {
+    await storage.removeItem(SESSION_KEY);
+    reportLocalStage(report, "sessão local ausente");
+    return null;
+  }
+  const users = await load(report);
+  const user = users.find((candidate) => candidate.id === id) ?? null;
+  if (!user) {
+    await storage.removeItem(SESSION_KEY);
+    reportLocalStage(report, "usuário não encontrado; sessão local removida");
+    return null;
+  }
+  reportLocalStage(report, "sessão local restaurada");
+  return user;
 }
 
 function warnLocalFallback(context: string) {
@@ -283,8 +345,8 @@ export const authService = {
     return newUser;
   },
 
-  async getSession(): Promise<User | null> {
-    if (!(USE_SUPABASE && supabase)) return getLocalSession();
+  async getSession(report?: LocalAuthStageReporter): Promise<User | null> {
+    if (!(USE_SUPABASE && supabase)) return getLocalSession(report);
 
     try {
       const { data, error } = await withTimeout(
@@ -295,7 +357,7 @@ export const authService = {
       if (error) {
         if (isSupabaseUnavailable(error)) {
           warnLocalFallback("Supabase indisponível ao restaurar sessão");
-          return getLocalSession();
+          return getLocalSession(report);
         }
         await clearInvalidSupabaseSession();
         return null;
@@ -310,7 +372,7 @@ export const authService = {
       } catch (profileError) {
         if (isSupabaseUnavailable(profileError)) {
           warnLocalFallback("Perfil remoto indisponível na restauração");
-          return getLocalSession();
+          return getLocalSession(report);
         }
         await clearInvalidSupabaseSession();
         return null;
@@ -318,7 +380,7 @@ export const authService = {
     } catch (error) {
       if (isSupabaseUnavailable(error)) {
         warnLocalFallback("Restauração remota excedeu o tempo esperado");
-        return getLocalSession();
+        return getLocalSession(report);
       }
       await clearInvalidSupabaseSession();
       return null;
@@ -334,6 +396,12 @@ export const authService = {
       }
     }
     await storage.removeItem(SESSION_KEY);
+    listeners.forEach((l) => l());
+  },
+
+  async clearLocalSession(): Promise<void> {
+    const removed = await storage.removeItem(SESSION_KEY);
+    if (!removed) throw new Error("Não foi possível limpar a sessão local.");
     listeners.forEach((l) => l());
   },
 

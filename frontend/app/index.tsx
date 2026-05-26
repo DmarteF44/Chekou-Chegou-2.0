@@ -8,13 +8,39 @@ import { withTimeout } from "@/src/utils/withTimeout";
 
 const INDEX_BOOT_TIMEOUT_MS = AUTH_BOOT_TIMEOUT_MS + 1000;
 
+type DiagnosticError = {
+  name: string;
+  message: string;
+};
+
+function sanitizeDiagnosticText(value: string): string {
+  return value
+    .replace(/(password|senha|token|apikey|api[_-]?key|authorization|chave)(\s*[:=]\s*)[^\s,;]+/gi, "$1$2[oculto]")
+    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[token oculto]")
+    .replace(/sb_(publishable|secret)_[A-Za-z0-9_-]+/gi, "[chave oculta]")
+    .slice(0, 240);
+}
+
+function describeError(error: unknown): DiagnosticError {
+  if (error instanceof Error) {
+    return {
+      name: sanitizeDiagnosticText(error.name || "Error"),
+      message: sanitizeDiagnosticText(error.message || "Erro sem mensagem."),
+    };
+  }
+  return { name: "Error", message: "Falha desconhecida durante o bootstrap." };
+}
+
 // Auth gate / splash router.
-// Decides where to land based on session state and user role/driverStatus.
+// DIAG v3 deliberately holds navigation while the failing Android route is isolated.
 export default function Index() {
   const router = useRouter();
-  const [bootStage, setBootStage] = useState("DIAG v2 • render inicial");
+  const [bootStage, setBootStage] = useState("DIAG v3 • render inicial");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [bootError, setBootError] = useState("");
+  const [bootResult, setBootResult] = useState("");
+  const [bootError, setBootError] = useState<DiagnosticError | null>(null);
+  const [localStage, setLocalStage] = useState("aguardando getSession local");
+  const [localTrace, setLocalTrace] = useState("");
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -25,52 +51,51 @@ export default function Index() {
 
   useEffect(() => {
     let cancelled = false;
-    let navigated = false;
 
-    setBootStage("DIAG v2 • useEffect iniciado");
-
-    const navigateOnce = (
-      route: "/auth/login" | "/admin" | "/driver/home" | "/driver/blocked" | "/driver/pending" | "/client/home",
-      destination: string,
-    ) => {
-      if (cancelled || navigated) return;
-      navigated = true;
-      setBootStage(`DIAG v2 • navegando para ${destination}`);
-      router.replace(route);
-    };
+    setBootStage("DIAG v3 • useEffect iniciado");
 
     async function bootstrap() {
-      setBootStage("DIAG v2 • solicitando sessão");
+      setBootStage("DIAG v3 • solicitando sessão local");
+      setBootError(null);
+      setLocalTrace("");
       try {
         const u = await withTimeout(
-          authService.getSession(),
+          authService.getSession((stage) => {
+            if (!cancelled) {
+              setLocalStage(stage);
+              setLocalTrace((trace) => trace ? `${trace} > ${stage}` : stage);
+            }
+          }),
           INDEX_BOOT_TIMEOUT_MS,
           "Tempo limite ao iniciar sessão.",
         );
         if (!u) {
-          setBootError("Resultado: sessão resolvida sem usuário");
-          navigateOnce("/auth/login", "login");
+          setBootResult("Resultado: sessão resolvida sem usuário; destino seria login.");
+          setBootStage("DIAG v3 • bootstrap local concluído");
           return;
         }
         if (u.role === "admin" || u.role === "super_admin") {
-          setBootError("Resultado: sessão Admin resolvida");
-          navigateOnce("/admin", "admin");
+          setBootResult("Resultado: sessão Admin resolvida; navegação suspensa no diagnóstico.");
+          setBootStage("DIAG v3 • bootstrap local concluído");
           return;
         }
         if (u.role === "driver") {
-          if (u.driverStatus === "approved") navigateOnce("/driver/home", "entregador");
-          else if (u.driverStatus === "blocked") navigateOnce("/driver/blocked", "bloqueado");
-          else navigateOnce("/driver/pending", "pendente");
+          const destination = u.driverStatus === "approved"
+            ? "entregador"
+            : u.driverStatus === "blocked" ? "bloqueado" : "pendente";
+          setBootResult(`Resultado: sessão Entregador resolvida (${destination}); navegação suspensa no diagnóstico.`);
+          setBootStage("DIAG v3 • bootstrap local concluído");
           return;
         }
-        setBootError("Resultado: sessão Cliente resolvida");
-        navigateOnce("/client/home", "cliente");
+        setBootResult("Resultado: sessão Cliente resolvida; navegação suspensa no diagnóstico.");
+        setBootStage("DIAG v3 • bootstrap local concluído");
       } catch (error) {
-        const timedOut = error instanceof Error && error.message.toLowerCase().includes("tempo limite");
-        setBootError(timedOut ? "Evento: timeout da sessão" : "Evento: erro no bootstrap");
-        setBootStage(timedOut ? "DIAG v2 • timeout da sessão" : "DIAG v2 • erro no bootstrap");
-        console.warn("[bootstrap] Sessão inicial indisponível no prazo; abrindo login.");
-        navigateOnce("/auth/login", "login");
+        if (cancelled) return;
+        const detail = describeError(error);
+        setBootError(detail);
+        setBootResult("");
+        setBootStage("DIAG v3 • erro bootstrap local");
+        console.warn(`[bootstrap] Falha local: ${detail.name}: ${detail.message}`);
       }
     }
 
@@ -78,12 +103,35 @@ export default function Index() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, []);
 
   function enterManually() {
-    setBootError("Ação: navegação manual solicitada");
-    setBootStage("DIAG v2 • navegando para login (manual)");
+    setBootResult("Ação: navegação manual para login mínimo solicitada.");
+    setBootStage("DIAG v3 • abrindo login mínimo");
     router.replace("/auth/login");
+  }
+
+  function testMinimalRoute() {
+    setBootResult("Ação: navegação para rota mínima solicitada.");
+    setBootStage("DIAG v3 • abrindo rota mínima");
+    router.push("/diag-minimal");
+  }
+
+  async function clearOnlyLocalSession() {
+    setBootStage("DIAG v3 • limpando apenas sessão local");
+    setBootError(null);
+    try {
+      await authService.clearLocalSession();
+      setLocalStage("sessão local removida");
+      setLocalTrace("sessão local removida manualmente");
+      setBootResult("Ação: somente a sessão local foi limpa. Reinicie o app para testar o bootstrap.");
+      setBootStage("DIAG v3 • sessão local limpa");
+    } catch (error) {
+      const detail = describeError(error);
+      setBootError(detail);
+      setBootResult("");
+      setBootStage("DIAG v3 • falha ao limpar sessão local");
+    }
   }
 
   return (
@@ -98,12 +146,28 @@ export default function Index() {
       <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.lg }} />
       <View style={styles.diagPanel}>
         <Text style={styles.diagTitle}>{bootStage}</Text>
-        <Text style={styles.diagText}>DIAG v2 • {elapsedSeconds}s • modo local forçado</Text>
-        {bootError ? <Text style={styles.diagText}>{bootError}</Text> : null}
+        <Text style={styles.diagText}>DIAG v3 • {elapsedSeconds}s • modo local forçado</Text>
+        <Text style={styles.diagText}>Etapa local: {localStage}</Text>
+        {localTrace ? <Text style={styles.traceText}>Rastro local: {localTrace}</Text> : null}
+        {bootResult ? <Text style={styles.diagText}>{bootResult}</Text> : null}
+        {bootError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>Tipo: {bootError.name}</Text>
+            <Text style={styles.errorText}>Mensagem: {bootError.message}</Text>
+          </View>
+        ) : null}
         {elapsedSeconds >= 3 ? (
-          <TouchableOpacity style={styles.escapeButton} onPress={enterManually} testID="diag-enter-manually">
-            <Text style={styles.escapeButtonText}>Entrar manualmente</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity style={styles.escapeButton} onPress={testMinimalRoute} testID="diag-test-minimal-route">
+              <Text style={styles.escapeButtonText}>Testar rota mínima</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.escapeButton} onPress={enterManually} testID="diag-enter-manually">
+              <Text style={styles.escapeButtonText}>Entrar manualmente</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryButton} onPress={clearOnlyLocalSession} testID="diag-clear-local-session">
+              <Text style={styles.secondaryButtonText}>Limpar apenas sessão local</Text>
+            </TouchableOpacity>
+          </>
         ) : null}
       </View>
     </View>
@@ -121,9 +185,20 @@ const styles = StyleSheet.create({
   diagPanel: { marginTop: spacing.md, alignItems: "center", paddingHorizontal: spacing.md, gap: 6 },
   diagTitle: { fontSize: fontSize.small, fontWeight: "700", color: colors.textPrimary, textAlign: "center" },
   diagText: { fontSize: fontSize.small, color: colors.textSecondary, textAlign: "center" },
+  traceText: { fontSize: fontSize.caption, color: colors.textTertiary, textAlign: "center" },
+  errorBox: {
+    marginTop: spacing.xs, borderRadius: 8, backgroundColor: colors.errorSoft,
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, alignSelf: "stretch",
+  },
+  errorText: { fontSize: fontSize.small, color: colors.error, textAlign: "center" },
   escapeButton: {
     marginTop: spacing.sm, borderRadius: 8, backgroundColor: colors.primary,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
   escapeButtonText: { color: colors.white, fontSize: fontSize.small, fontWeight: "700" },
+  secondaryButton: {
+    marginTop: spacing.sm, borderRadius: 8, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+  },
+  secondaryButtonText: { color: colors.textSecondary, fontSize: fontSize.small, fontWeight: "700" },
 });
